@@ -1,0 +1,60 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="100%" height="100%">
+  <defs>
+    <!-- 背景渐变 -->
+    <linearGradient id="bgGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#1E293B" />
+      <stop offset="100%" stop-color="#0F172A" />
+    </linearGradient>
+
+    <!-- 图书主渐变 -->
+    <linearGradient id="bookGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#38BDF8" />
+      <stop offset="100%" stop-color="#1D4ED8" />
+    </linearGradient>
+
+    <!-- 放大镜/金币高光渐变 -->
+    <linearGradient id="goldGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#FDE047" />
+      <stop offset="100%" stop-color="#EAB308" />
+    </linearGradient>
+
+    <!-- 图标阴影滤镜 -->
+    <filter id="shadow" x="-10%" y="-10%" width="120%" height="120%">
+      <feDropShadow dx="0" dy="8" stdDeviation="12" flood-color="#000000" flood-opacity="0.35" />
+    </filter>
+  </defs>
+
+  <!-- 圆角背景圆盘 -->
+  <rect width="512" height="512" rx="112" fill="url(#bgGrad)" />
+
+  <!-- 主图组（带阴影） -->
+  <g filter="url(#shadow)">
+    <!-- 打开的书本底部支撑/书页底边 -->
+    <path d="M 120,310 Q 256,350 392,310 L 392,190 Q 256,230 120,190 Z" fill="#334155" opacity="0.5" />
+
+    <!-- 打开的书本 (左页) -->
+    <path d="M 120,190 Q 256,230 256,330 Q 180,305 120,310 Z" fill="url(#bookGrad)" />
+
+    <!-- 打开的书本 (右页) -->
+    <path d="M 392,190 Q 256,230 256,330 Q 332,305 392,310 Z" fill="#60A5FA" />
+
+    <!-- 书页中缝线与细节质感 -->
+    <path d="M 256,230 L 256,330" stroke="#1E40AF" stroke-width="4" stroke-linecap="round" />
+    <path d="M 150,225 Q 200,242 236,242" stroke="#93C5FD" stroke-width="6" stroke-linecap="round" opacity="0.6" />
+    <path d="M 150,250 Q 200,267 236,267" stroke="#93C5FD" stroke-width="6" stroke-linecap="round" opacity="0.6" />
+    <path d="M 276,242 Q 312,242 362,225" stroke="#DBEAFE" stroke-width="6" stroke-linecap="round" opacity="0.6" />
+
+    <!-- 放大镜（代表搜索比价） -->
+    <!-- 放大镜把手 -->
+    <rect x="328" y="328" width="28" height="90" rx="14" transform="rotate(-45 328 328)" fill="url(#goldGrad)" />
+    
+    <!-- 放大镜圆环 -->
+    <circle cx="280" cy="280" r="75" fill="#1E293B" stroke="url(#goldGrad)" stroke-width="22" />
+
+    <!-- 放大镜镜面（带搜索与比价符号￥） -->
+    <circle cx="280" cy="280" r="54" fill="#0F172A" />
+
+    <!-- ￥（人民币/价格符，突显比价属性） -->
+    <path d="M 264,254 L 280,278 L 296,254 M 262,278 L 298,278 M 262,288 L 298,288 M 280,278 L 280,306" stroke="url(#goldGrad)" stroke-width="6" stroke-linecap="round" stroke-linejoin="round" fill="none" />
+  </g>
+</svg>

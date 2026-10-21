@@ -4,6 +4,14 @@ description: 专门用于全网图书/书籍比价的技能。支持通过书名
 description_zh: "全网图书最低价：支持 ISBN/书名查询淘宝、京东、拼多多等平台图书底价与优惠券"
 description_en: "Cross-platform book price & coupon comparison via ISBN or book title across major Chinese e-commerce sites"
 version: 1.0.0
+author: wuzm2k05
+trigger:
+  - "图书最低价"
+  - "图书比价"
+  - "图书价格"
+  - "书籍最低价"
+  - "书籍比价"
+  - "书籍价格"
 homepage: https://github.com/wuzm2k05/skills/book-search-skill
 metadata:
   openclaw:

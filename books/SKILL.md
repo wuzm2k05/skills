@@ -1,5 +1,5 @@
 ---
-name: book-search
+name: book-search-skill
 description: 专门用于全网图书/书籍比价的技能。支持通过书名、作者或 13 位 ISBN（书号）查询淘宝/天猫、京东、拼多多等平台的图书最低价、优惠券、出版社及版次信息。当用户想买书、查书价或寻找最低折扣时使用。
 description_zh: "全网图书最低价：支持 ISBN/书名查询淘宝、京东、拼多多等平台图书底价与优惠券"
 description_en: "Cross-platform book price & coupon comparison via ISBN or book title across major Chinese e-commerce sites"

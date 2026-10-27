@@ -7,7 +7,7 @@ description_zh: "【办公采买不踩坑】支持电脑/服务器/打印机/复
 description_en: "Cross-platform price comparison for office hardware and consumables, with OEM-vs-compatible matching, paper unit-price conversion, and VAT invoice / warranty parsing"
 version: 1.1.0
 author: 玖结点信息技术有限公司
-icon: "_icon.svg"
+icon: "_icon.png"
 homepage: https://github.com/wuzm2k05/skills/office-tech-buyer
 trigger:
   - "办公设备易采买"
@@ -22,7 +22,7 @@ trigger:
 metadata:
   openclaw:
     emoji: "🖨️"
-    icon: "_icon.svg"
+    icon: "_icon.png"
     requires:
       bins:
         - uv

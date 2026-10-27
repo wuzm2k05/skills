@@ -79,7 +79,7 @@ class Settings:
     app_name: str = "office-tech-buyer-server"
     app_version: str = "1.1.0"
     host: str = field(default_factory=lambda: _str("HOST", "0.0.0.0"))
-    port: int = field(default_factory=lambda: _int("PORT", 8446))
+    port: int = field(default_factory=lambda: _int("PORT", 11443))
     api_prefix: str = "/api/v1"
     cors_origins: list[str] = field(
         default_factory=lambda: _list("OFFICE_BUYER_CORS_ORIGINS", ("*",))

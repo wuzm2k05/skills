@@ -1,0 +1,32 @@
+[project]
+name = "office-tech-buyer-server"
+version = "1.1.0"
+description = "办公设备易采买 —— 云端服务：全品类比价、设备-耗材映射、专票与质保解析"
+readme = "README.md"
+requires-python = ">=3.11"
+authors = [{ name = "玖结点信息技术有限公司" }]
+dependencies = [
+    "fastapi>=0.115.6,<0.116",
+    "uvicorn[standard]>=0.34.0,<0.35",
+    "httpx>=0.28.1,<0.29",
+    "python-multipart>=0.0.20",
+]
+
+[dependency-groups]
+dev = [
+    "pyflakes>=3.2.0",
+    "pytest>=8.3.4",
+    "pytest-asyncio>=0.25.0",
+]
+
+[tool.uv]
+# 这是应用而非库：uv sync 只装依赖，不把项目自身装进 .venv
+package = false
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
+# 上游客户端是进程内单例，其信号量与限流锁在首次使用时绑定事件循环。
+# 用会话级事件循环跑测试，与线上「一个进程一个循环」的形态保持一致。
+asyncio_default_fixture_loop_scope = "session"
+asyncio_default_test_loop_scope = "session"

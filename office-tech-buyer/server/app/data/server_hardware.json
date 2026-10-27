@@ -1,0 +1,254 @@
+{
+  "_meta": {
+    "description": "服务器 / 台式机 / 笔记本 / 工作站 / 显示设备 与 兼容扩展配件映射表",
+    "schema": {
+      "device_name": "设备完整名称",
+      "category": "品类：服务器 / 电脑整机 / 工作站 / 笔记本 / 显示器 / 网络设备",
+      "memory_spec": "内存规格（类型/ECC/频率）",
+      "storage_spec": "存储规格（接口/尺寸/协议）",
+      "accessory_keywords": "扩展配件搜索关键词列表",
+      "aliases": "设备别名/简称",
+      "notes": "选型提示"
+    }
+  },
+
+  "R750": {
+    "device_name": "戴尔 Dell PowerEdge R750 机架式服务器",
+    "category": "服务器",
+    "memory_spec": "DDR4 ECC RDIMM 3200MHz（32G/64G/128G）",
+    "storage_spec": "2.5 寸 SAS/SATA/NVMe 热插拔硬盘 + 后置 BOSS 卡",
+    "accessory_keywords": [
+      "戴尔 R750 服务器内存 DDR4 ECC 32G",
+      "戴尔 PowerEdge 2.5寸 SAS 硬盘 服务器",
+      "戴尔 R750 硬盘托架 2.5寸",
+      "戴尔 R750 电源模块 800W"
+    ],
+    "aliases": ["R750", "PowerEdge R750", "R750xs"],
+    "notes": "内存必须 ECC RDIMM，普通台式机内存不可用；硬盘需配原厂托架"
+  },
+  "R740": {
+    "device_name": "戴尔 Dell PowerEdge R740 机架式服务器",
+    "category": "服务器",
+    "memory_spec": "DDR4 ECC RDIMM 2666/2933MHz",
+    "storage_spec": "2.5 寸 SAS/SATA 硬盘 + NDC 网卡",
+    "accessory_keywords": [
+      "戴尔 R740 服务器内存 DDR4 ECC 32G",
+      "戴尔 R740 硬盘托架 2.5寸",
+      "戴尔 R740 电源 750W 热插拔",
+      "戴尔 R740 导轨"
+    ],
+    "aliases": ["R740", "PowerEdge R740", "R740xd"],
+    "notes": "R740 与 R750 托架不通用，注意 CPU 平台代际"
+  },
+  "R730": {
+    "device_name": "戴尔 Dell PowerEdge R730 机架式服务器",
+    "category": "服务器",
+    "memory_spec": "DDR4 ECC RDIMM 2133/2400MHz",
+    "storage_spec": "2.5 寸 SAS/SATA 硬盘",
+    "accessory_keywords": [
+      "戴尔 R730 服务器内存 DDR4 ECC 16G",
+      "戴尔 R730 硬盘托架 2.5寸",
+      "戴尔 R730 电源 750W"
+    ],
+    "aliases": ["R730", "R730xd"],
+    "notes": "存量机型，二手配件市场活跃，注意质保与检测报告"
+  },
+  "DL380 Gen10": {
+    "device_name": "惠普 HPE ProLiant DL380 Gen10 机架式服务器",
+    "category": "服务器",
+    "memory_spec": "DDR4 ECC RDIMM 2933MHz",
+    "storage_spec": "2.5 寸 SAS/SATA/NVMe 硬盘",
+    "accessory_keywords": [
+      "HPE DL380 Gen10 服务器内存 DDR4 ECC 32G",
+      "HPE DL380 Gen10 硬盘托架 2.5寸",
+      "HPE Gen10 电源 800W 热插拔"
+    ],
+    "aliases": ["DL380", "DL380 Gen10", "DL380G10"],
+    "notes": "HPE 智能内存对第三方兼容性敏感，建议使用 HPE 认证内存"
+  },
+  "DL388 Gen10": {
+    "device_name": "惠普 HPE ProLiant DL388 Gen10 机架式服务器",
+    "category": "服务器",
+    "memory_spec": "DDR4 ECC RDIMM 2933MHz",
+    "storage_spec": "2.5 寸 SAS/SATA 硬盘",
+    "accessory_keywords": [
+      "HPE DL388 Gen10 内存 DDR4 ECC 32G",
+      "HPE DL388 Gen10 硬盘托架",
+      "HPE DL388 电源 500W"
+    ],
+    "aliases": ["DL388", "DL388 Gen10", "DL388G10"],
+    "notes": "国内常见型号，与 DL380 配件部分通用但托架需核对"
+  },
+  "NF5280M5": {
+    "device_name": "浪潮 Inspur NF5280M5 机架式服务器",
+    "category": "服务器",
+    "memory_spec": "DDR4 ECC RDIMM 2666/2933MHz",
+    "storage_spec": "2.5 寸 SAS/SATA/NVMe 硬盘",
+    "accessory_keywords": [
+      "浪潮 NF5280M5 服务器内存 DDR4 ECC 32G",
+      "浪潮 NF5280M5 硬盘托架 2.5寸",
+      "浪潮 NF5280M5 电源 550W"
+    ],
+    "aliases": ["NF5280M5", "NF5280", "5280M5"],
+    "notes": "浪潮内存兼容性偏严，建议同步报价浪潮原厂内存条"
+  },
+  "NF5270M5": {
+    "device_name": "浪潮 Inspur NF5270M5 机架式服务器",
+    "category": "服务器",
+    "memory_spec": "DDR4 ECC RDIMM 2666MHz",
+    "storage_spec": "3.5 寸 SATA/SAS 硬盘",
+    "accessory_keywords": [
+      "浪潮 NF5270M5 内存 DDR4 ECC",
+      "浪潮 NF5270M5 硬盘托架 3.5寸",
+      "浪潮 NF5270M5 电源"
+    ],
+    "aliases": ["NF5270M5", "NF5270", "5270M5"],
+    "notes": "3.5 寸盘位机型，适合大容量存储场景"
+  },
+  "ThinkSystem SR650": {
+    "device_name": "联想 Lenovo ThinkSystem SR650 机架式服务器",
+    "category": "服务器",
+    "memory_spec": "DDR4 ECC RDIMM 2666/2933MHz",
+    "storage_spec": "2.5 寸 SAS/SATA/NVMe 硬盘",
+    "accessory_keywords": [
+      "联想 SR650 服务器内存 DDR4 ECC 32G",
+      "联想 SR650 硬盘托架 2.5寸",
+      "联想 SR650 电源 750W"
+    ],
+    "aliases": ["SR650", "ThinkSystem SR650", "SR658"],
+    "notes": "联想服务器内存有白名单机制，第三方内存可能报警告"
+  },
+  "ThinkCentre M730q": {
+    "device_name": "联想 Lenovo ThinkCentre M730q 微型台式机",
+    "category": "电脑整机",
+    "memory_spec": "DDR4 2666/3200 SO-DIMM 笔记本内存条",
+    "storage_spec": "M.2 2280 NVMe SSD（PCIe 3.0）+ 2.5 寸 SATA 位",
+    "accessory_keywords": [
+      "DDR4 笔记本内存 16G 3200",
+      "M.2 NVMe SSD 1TB PCIe3.0",
+      "联想 M730q 电源适配器 90W",
+      "联想 Tiny 机型 显示器支架"
+    ],
+    "aliases": ["M730q", "ThinkCentre M730q", "M720q", "M920q", "M75q"],
+    "notes": "1L 微型机，仅支持 SO-DIMM 低电压内存与单面 M.2"
+  },
+  "ThinkCentre M720t": {
+    "device_name": "联想 Lenovo ThinkCentre M720t 塔式台式机",
+    "category": "电脑整机",
+    "memory_spec": "DDR4 2666 UDIMM 台式机内存条",
+    "storage_spec": "M.2 NVMe SSD + 3.5 寸 SATA 硬盘位",
+    "accessory_keywords": [
+      "DDR4 台式机内存 16G 2666",
+      "M.2 NVMe SSD 512G",
+      "3.5寸 机械硬盘 4TB"
+    ],
+    "aliases": ["M720t", "M720s", "M920t", "ThinkCentre M720"],
+    "notes": "标准塔式，扩展性好；注意内存条为 UDIMM 非 SO-DIMM"
+  },
+  "OptiPlex 7080": {
+    "device_name": "戴尔 Dell OptiPlex 7080 商用台式机",
+    "category": "电脑整机",
+    "memory_spec": "DDR4 2666/2933 UDIMM 台式机内存条",
+    "storage_spec": "M.2 2280 NVMe SSD + 2.5/3.5 寸 SATA 位",
+    "accessory_keywords": [
+      "戴尔 OptiPlex 7080 内存 DDR4 16G",
+      "M.2 NVMe SSD 1TB",
+      "戴尔 OptiPlex 电源 200W"
+    ],
+    "aliases": ["OptiPlex 7080", "7080MT", "7080SFF", "7080MFF", "OptiPlex 7090"],
+    "notes": "MT/SFF/MFF 三种机箱，MFF 只能装 M.2 和 2.5 寸盘"
+  },
+  "Precision 3660": {
+    "device_name": "戴尔 Dell Precision 3660 塔式工作站",
+    "category": "工作站",
+    "memory_spec": "DDR5 4800 UDIMM（支持 ECC）",
+    "storage_spec": "M.2 NVMe SSD + 3.5 寸 SATA 位",
+    "accessory_keywords": [
+      "DDR5 台式机内存 32G 4800",
+      "M.2 NVMe SSD 2TB PCIe4.0",
+      "戴尔 Precision 3660 电源 500W"
+    ],
+    "aliases": ["Precision 3660", "Precision 3650", "P3660"],
+    "notes": "DDR5 平台，内存需与 DDR4 区分；专业显卡另计"
+  },
+  "ThinkPad E14": {
+    "device_name": "联想 ThinkPad E14 商用笔记本",
+    "category": "笔记本",
+    "memory_spec": "DDR4 3200 SO-DIMM 笔记本内存条（部分板载）",
+    "storage_spec": "M.2 2280 NVMe SSD",
+    "accessory_keywords": [
+      "DDR4 3200 笔记本内存 16G",
+      "M.2 NVMe SSD 1TB",
+      "ThinkPad E14 电源适配器 65W Type-C",
+      "ThinkPad 扩展坞 Type-C"
+    ],
+    "aliases": ["ThinkPad E14", "E15", "ThinkBook 14", "ThinkPad T14"],
+    "notes": "板载+插槽混合设计，加装前需确认空余插槽"
+  },
+  "MacBook Air M2": {
+    "device_name": "Apple MacBook Air 13 英寸 M2",
+    "category": "笔记本",
+    "memory_spec": "统一内存（板载不可扩展）",
+    "storage_spec": "板载 SSD（不可扩展）",
+    "accessory_keywords": [
+      "MacBook Air M2 保护壳",
+      "MacBook 电源适配器 35W 双口",
+      "USB-C 扩展坞 多口"
+    ],
+    "aliases": ["MacBook Air M2", "MacBook Air M3", "MacBook Pro M2"],
+    "notes": "内存与硬盘均板载不可升级，选购时应一次性选足配置"
+  },
+  "ThinkVision T24": {
+    "device_name": "联想 ThinkVision T24 23.8 英寸显示器",
+    "category": "显示器",
+    "memory_spec": "不适用",
+    "storage_spec": "不适用",
+    "accessory_keywords": [
+      "ThinkVision 显示器支架 升降旋转",
+      "HDMI 2.0 高清线 2米",
+      "DP 1.4 视频线 2米",
+      "显示器壁挂架 VESA 100x100"
+    ],
+    "aliases": ["ThinkVision T24", "T24i", "T24m", "T23", "T27"],
+    "notes": "原装底座支持升降旋转；VESA 100x100 可换臂"
+  },
+  "Dell U2422H": {
+    "device_name": "戴尔 Dell UltraSharp U2422H 24 英寸显示器",
+    "category": "显示器",
+    "memory_spec": "不适用",
+    "storage_spec": "不适用",
+    "accessory_keywords": [
+      "戴尔 U2422H 显示器支架",
+      "Type-C 视频线 65W 供电",
+      "VESA 壁挂支架 100x100"
+    ],
+    "aliases": ["U2422H", "U2419H", "U2723QE", "UltraSharp"],
+    "notes": "U 系列支持 Type-C 单线供电，需确认笔记本 PD 功率"
+  },
+  "RG-AP820": {
+    "device_name": "锐捷 Ruijie RG-AP820-L 无线接入点",
+    "category": "网络设备",
+    "memory_spec": "不适用",
+    "storage_spec": "不适用",
+    "accessory_keywords": [
+      "锐捷 AP 吸顶安装架",
+      "PoE 供电交换机 8口千兆",
+      "六类非屏蔽网线 305米"
+    ],
+    "aliases": ["RG-AP820", "AP820-L", "锐捷AP", "RG-AP740"],
+    "notes": "需 PoE+ 供电或电源适配器；吊顶安装需吸顶支架"
+  },
+  "DS-2CD3T46": {
+    "device_name": "海康威视 HIKVISION DS-2CD3T46 网络摄像机",
+    "category": "网络设备",
+    "memory_spec": "不适用",
+    "storage_spec": "不适用",
+    "accessory_keywords": [
+      "监控专用硬盘 4TB 紫盘",
+      "PoE 交换机 8口",
+      "监控摄像头支架 壁装"
+    ],
+    "aliases": ["DS-2CD3T46", "海康 400万 摄像头", "DS-2CD3T56"],
+    "notes": "需搭配 NVR 与监控级硬盘，普通桌面硬盘不适合 7x24 写入"
+  }
+}

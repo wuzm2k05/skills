@@ -1,0 +1,104 @@
+<svg id="appIconSvg" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="100%" height="100%">
+  <defs>
+    <!-- Background Gradient -->
+    <linearGradient id="bgGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#181e29" />
+      <stop offset="100%" stop-color="#0b0e14" />
+    </linearGradient>
+
+    <!-- Metallic & Gold Gradients -->
+    <linearGradient id="goldGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#ffe259" />
+      <stop offset="100%" stop-color="#ffa751" />
+    </linearGradient>
+    
+    <linearGradient id="blueGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#38ef7d" />
+      <stop offset="0%" stop-color="#11998e" />
+    </linearGradient>
+
+    <linearGradient id="monitorGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#2c3e50" />
+      <stop offset="100%" stop-color="#000000" />
+    </linearGradient>
+
+    <linearGradient id="screenGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#1e3c72" />
+      <stop offset="100%" stop-color="#2a5298" />
+    </linearGradient>
+
+    <linearGradient id="metalGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#e0e0e0" />
+      <stop offset="50%" stop-color="#f5f5f5" />
+      <stop offset="100%" stop-color="#9e9e9e" />
+    </linearGradient>
+
+    <!-- Shadow Filter for Depth -->
+    <filter id="dropShadow" x="-10%" y="-10%" width="130%" height="130%">
+      <feDropShadow dx="0" dy="12" stdDeviation="16" flood-color="#000" flood-opacity="0.6" />
+    </filter>
+    
+    <filter id="glow" x="-20%" y="-20%" width="140%" height="140%">
+      <feGaussianBlur stdDeviation="6" result="blur" />
+      <feComposite in="SourceGraphic" in2="blur" operator="over" />
+    </filter>
+  </defs>
+
+  <!-- 1. Squircle Dark Container -->
+  <rect x="0" y="0" width="512" height="512" rx="112" fill="url(#bgGrad)" />
+  <rect x="1" y="1" width="510" height="510" rx="111" fill="none" stroke="#ffffff" stroke-opacity="0.08" stroke-width="2" />
+
+  <!-- Main Elements Group with Filter -->
+  <g filter="url(#dropShadow)">
+    <!-- 2. Monitor Screen in Background -->
+    <!-- Stand Base & Neck -->
+    <path d="M220 310 L292 310 L280 270 L232 270 Z" fill="url(#metalGrad)" />
+    <rect x="190" y="310" width="132" height="12" rx="6" fill="url(#metalGrad)" />
+    <!-- Outer Frame -->
+    <rect x="136" y="120" width="240" height="156" rx="14" fill="url(#monitorGrad)" stroke="#455a64" stroke-width="4" />
+    <!-- Display Content -->
+    <rect x="146" y="130" width="220" height="130" rx="6" fill="url(#screenGrad)" />
+    <!-- Simple Analytics / Chart lines on Screen -->
+    <rect x="162" y="146" width="70" height="10" rx="3" fill="#ffffff" fill-opacity="0.7" />
+    <rect x="162" y="164" width="110" height="6" rx="2" fill="#64b5f6" fill-opacity="0.8" />
+    <path d="M162 230 L200 200 L240 215 L300 170 L346 195" fill="none" stroke="#4fc3f7" stroke-width="6" stroke-linecap="round" stroke-linejoin="round" />
+    <circle cx="346" cy="195" r="5" fill="#ffd54f" />
+
+    <!-- 3. Office Printer in Center Foreground -->
+    <!-- Main Body -->
+    <rect x="110" y="240" width="232" height="110" rx="16" fill="#eceff1" />
+    <!-- Dark Control Panel Area -->
+    <rect x="130" y="254" width="192" height="34" rx="8" fill="#263238" />
+    <circle cx="150" cy="271" r="5" fill="#00e676" />
+    <circle cx="168" cy="271" r="5" fill="#ffb74d" />
+    <rect x="190" y="265" width="60" height="12" rx="3" fill="#455a64" />
+    <rect x="280" y="261" width="28" height="20" rx="4" fill="#0288d1" />
+
+    <!-- Paper Tray Output Slot & Paper Paper Out -->
+    <rect x="140" y="306" width="172" height="8" rx="4" fill="#90a4ae" />
+    <!-- Printed Page Output -->
+    <path d="M160 310 L320 310 L310 375 L170 375 Z" fill="#ffffff" stroke="#cfd8dc" stroke-width="2" />
+    <!-- Text Lines on Printed Sheet -->
+    <line x1="186" y1="330" x2="294" y2="330" stroke="#b0bec5" stroke-width="4" stroke-linecap="round" />
+    <line x1="186" y1="344" x2="270" y2="344" stroke="#b0bec5" stroke-width="4" stroke-linecap="round" />
+    <line x1="186" y1="358" x2="250" y2="358" stroke="#81c784" stroke-width="4" stroke-linecap="round" />
+
+    <!-- 4. Metallic Magnifying Glass OVERLAY -->
+    <g transform="translate(40, -10)">
+      <!-- Glass Handle -->
+      <rect x="310" y="310" width="120" height="26" rx="13" transform="rotate(42 310 310)" fill="url(#metalGrad)" stroke="#757575" stroke-width="2" />
+      <rect x="315" y="315" width="110" height="10" rx="5" transform="rotate(42 310 310)" fill="#424242" fill-opacity="0.3" />
+
+      <!-- Outer Metallic Ring -->
+      <circle cx="260" cy="260" r="80" fill="#102a43" fill-opacity="0.35" stroke="url(#goldGrad)" stroke-width="18" />
+      <circle cx="260" cy="260" r="70" fill="none" stroke="#ffffff" stroke-opacity="0.4" stroke-width="3" />
+
+      <!-- Best Price Badge Inside Magnifier Glass -->
+      <!-- Golden Price Tag / Yen Symbol -->
+      <circle cx="260" cy="260" r="48" fill="url(#goldGrad)" filter="url(#glow)" />
+      
+      <!-- Yen Symbol (¥) -->
+      <path d="M236 232 L260 262 L284 232 M240 262 L280 262 M240 274 L280 274 M260 262 L260 292" fill="none" stroke="#5d4037" stroke-width="7" stroke-linecap="round" stroke-linejoin="round" />
+    </g>
+  </g>
+</svg>

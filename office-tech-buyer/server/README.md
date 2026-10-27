@@ -19,7 +19,7 @@ cd server
 uv sync --all-groups
 
 # 开发运行（自动重载）
-uv run uvicorn app.main:app --host 0.0.0.0 --port 8446 --reload
+uv run uvicorn app.main:app --host 0.0.0.0 --port 11443 --reload
 
 # 或直接运行
 uv run python -m app.main
@@ -27,12 +27,15 @@ uv run python -m app.main
 
 启动后访问：
 
-- 服务信息 <http://localhost:8446/>
-- 健康检查 <http://localhost:8446/health>
-- 交互式文档 <http://localhost:8446/docs>
+- 服务信息 <http://localhost:11443/>
+- 健康检查 <http://localhost:11443/health>
+- 交互式文档 <http://localhost:11443/docs>
 
-> 服务默认监听 `8446`（`app/config.py` 中的 `Settings.port`），可用 `PORT` 环境变量覆盖。
-> 技能端默认连生产地址，本机自测时设 `OFFICE_BUYER_SERVER_URL=http://localhost:8446`。
+> 服务默认监听 `11443`（`app/config.py` 中的 `Settings.port`），可用 `PORT` 环境变量覆盖。
+> 技能端默认连生产地址，本机自测时设 `OFFICE_BUYER_SERVER_URL=http://localhost:11443`。
+>
+> 上面两条是开发用的前台运行（终端一关就没了）。要在服务器上**后台常驻**，见
+> [第 7 节：后台常驻运行](#7-后台常驻运行启动脚本) —— `./scripts/start.sh` 一行即可。
 
 ## 2. 接口一览
 
@@ -49,16 +52,16 @@ uv run python -m app.main
 
 ```bash
 # 关键词命中映射表（打印机会自动带出原装 + 兼容耗材）
-curl "http://localhost:8446/api/v1/search?keyword=%E6%83%A0%E6%99%AE%20M126a&source=0&page=1"
+curl "http://localhost:11443/api/v1/search?keyword=%E6%83%A0%E6%99%AE%20M126a&source=0&page=1"
 
 # 关键词未命中（写入 logs/unmatched.log，返回 matched=false）
-curl "http://localhost:8446/api/v1/search?keyword=%E6%9C%AA%E7%9F%A5%E5%86%B7%E9%97%A8%E8%AE%BE%E5%A4%87%E5%9E%8B%E5%8F%B70123"
+curl "http://localhost:11443/api/v1/search?keyword=%E6%9C%AA%E7%9F%A5%E5%86%B7%E9%97%A8%E8%AE%BE%E5%A4%87%E5%9E%8B%E5%8F%B70123"
 
 # 商品详情
-curl "http://localhost:8446/api/v1/detail?source=2&id=123456789"
+curl "http://localhost:11443/api/v1/detail?source=2&id=123456789"
 
 # 映射查询
-curl "http://localhost:8446/api/v1/consumable/mapping?device=M126a"
+curl "http://localhost:11443/api/v1/consumable/mapping?device=M126a"
 ```
 
 ### `search` 响应结构
@@ -148,6 +151,17 @@ server/
 ├── logs/
 │   ├── unmatched.log              # 未命中关键词记录（运行时生成）
 │   └── unmatched.log.1 … .N       # 滚动分片（运行时生成）
+├── run/                           # 常驻脚本的运行期文件（运行时生成，不入库）
+│   ├── office-buyer.pid           # 守护循环 PID
+│   ├── office-buyer.state         # 本次实例实际使用的端口/地址
+│   ├── office-buyer.stop          # 停止标记（存在即表示人工停机中）
+│   └── daemon.log                 # 看门狗与 uvicorn 的输出
+├── scripts/                       # 常驻脚本（裸机/云主机部署用）
+│   ├── start.sh                   # 后台启动 + 看门狗
+│   ├── stop.sh                    # 优雅停止（超时自动升级 SIGKILL）
+│   ├── restart.sh                 # stop 后 start
+│   ├── status.sh                  # 进程/端口/健康检查/日志摘要
+│   └── _common.sh                 # 公共函数（被上面四个 source）
 ├── tests/
 │   ├── conftest.py                # 公共夹具（打桩上游 + ASGI 客户端）
 │   ├── test_search.py             # 搜索接口：命中/未命中/降级/校验
@@ -157,6 +171,7 @@ server/
 ├── pyproject.toml                 # 依赖、开发组与 pytest 配置
 ├── uv.lock                        # 依赖锁定（提交入库，保证各处一致）
 ├── .python-version                # 固定解释器版本
+├── office-buyer.conf.example      # 常驻脚本配置模板（复制为 office-buyer.conf 后生效）
 └── Dockerfile
 ```
 
@@ -212,7 +227,7 @@ unmatched.log  →  unmatched.log.1  →  unmatched.log.2  →  …  →  unmatc
 
 | 变量 | 默认值 | 说明 |
 | :--- | :--- | :--- |
-| `HOST` / `PORT` | `0.0.0.0` / `8446` | 监听地址与端口 |
+| `HOST` / `PORT` | `0.0.0.0` / `11443` | 监听地址与端口 |
 | `OFFICE_BUYER_DATA_DIR` | `app/data` | 映射表目录 |
 | `OFFICE_BUYER_LOG_DIR` | `logs` | 日志目录 |
 | `OFFICE_BUYER_LOG_MAX_BYTES` | `5242880` | 未命中日志单分片大小上限（字节），`0` 关闭滚动 |
@@ -238,7 +253,7 @@ docker build -t office-tech-buyer:1.1.0 .
 
 # 运行（日志目录挂载到宿主机，便于排查未命中关键词）
 docker run -d --name office-buyer \
-  -p 8446:8446 \
+  -p 11443:11443 \
   -v "$(pwd)/logs:/app/logs" \
   -e OFFICE_BUYER_TRUST_FORWARDED_FOR=1 \
   office-tech-buyer:1.1.0
@@ -251,7 +266,7 @@ services:
   office-buyer:
     build: .
     ports:
-      - "8446:8446"
+      - "11443:11443"
     volumes:
       - ./logs:/app/logs
     environment:
@@ -260,7 +275,106 @@ services:
     restart: unless-stopped
 ```
 
-## 7. 功能验证
+## 7. 后台常驻运行（启动脚本）
+
+裸机 / 云主机部署（没有 Docker、也没有 systemd 托管）时用 `scripts/` 下的四个脚本，
+让服务在后台长时间运行，崩了自动拉起：
+
+```bash
+cd server
+
+./scripts/start.sh          # 后台启动，等健康检查通过后返回
+./scripts/status.sh         # 查看进程、端口、映射表条数、日志位置
+./scripts/restart.sh        # 重启
+./scripts/stop.sh           # 停止
+
+./scripts/start.sh --help   # 每个脚本都支持 --help
+```
+
+### 7.1 进程结构与看门狗
+
+```text
+start.sh（拉起守护循环后立即退出）
+  └── 守护循环        ← PID 记在 run/office-buyer.pid，全程不变
+        └── uvicorn   ← 退出后由循环重新拉起
+```
+
+- **崩溃自愈**：uvicorn 异常退出后按 `RESTART_DELAY`（默认 3 秒）重启；连续崩溃时
+  退避时间翻倍，封顶 60 秒，恢复成功后立刻回到 3 秒。启动即崩（端口冲突、配置写错）
+  不会把 CPU 和日志刷爆。
+- **退出码 0 视为正常收工**，立即重启，不进退避。
+- **PID 文件记的是守护循环**而不是 uvicorn：循环 PID 在整个运行期不变，stop/status
+  才有稳定的抓手（每次重启后 uvicorn 的 PID 都会变）。
+
+### 7.2 停止为什么必须用 stop.sh
+
+看门狗的职责就是把 uvicorn 拉起来，所以**直接 `kill` uvicorn 会被立刻重启**。
+`stop.sh` 按固定顺序做三件事：
+
+1. 落一个停止标记 `run/office-buyer.stop` —— 守护循环看到它就不再拉起新进程；
+2. 对「守护循环 + 整棵 uvicorn 子进程树」发 `SIGTERM` —— 走 graceful shutdown；
+3. 等待退出，超过 `STOP_TIMEOUT`（默认 20 秒）自动升级为 `SIGKILL` 并确认端口已释放。
+
+只杀守护循环是不够的：uvicorn 会被 init 收养、继续占着端口，下一次 `start.sh`
+会因「端口被占用且无 PID 文件」而拒绝启动。因此 `stop.sh` 除了按 PID 树收，
+还会按「命令行含 `app.main:app` 且含本次端口」全量扫描一次，把进程树已断的残留
+一并收掉；Windows（Git Bash）下还会用 `netstat` 反查端口占用者并补一刀 `taskkill /T /F`。
+
+### 7.3 配置
+
+优先级：**命令行 / 环境变量 > `office-buyer.conf` > 脚本内置默认值**。
+
+```bash
+# 一次性覆盖
+PORT=9000 WORKERS=1 ./scripts/start.sh
+
+# 长期生效：复制模板后修改（office-buyer.conf 不入库）
+cp office-buyer.conf.example office-buyer.conf
+```
+
+| 变量 | 默认值 | 说明 |
+| :--- | :--- | :--- |
+| `PORT` | `app/config.py` 中的 `Settings.port`（当前 `11443`） | 监听端口；脚本从源码读取，代码改了不必同步改脚本 |
+| `HOST` | `0.0.0.0` | 监听地址 |
+| `WORKERS` | `2` | uvicorn worker 数 |
+| `LOG_LEVEL` | `info` | uvicorn 日志级别 |
+| `LOG_DIR` | `server/logs` | 未命中日志目录（即 `OFFICE_BUYER_LOG_DIR`） |
+| `TRUST_PROXY` | `1` | 是否信任 `X-Forwarded-For`（即 `OFFICE_BUYER_TRUST_FORWARDED_FOR`） |
+| `RESTART_DELAY` | `3` | 崩溃后重启前等待秒数（连续崩溃自动退避，封顶 60 秒） |
+| `START_TIMEOUT` | `30` | `start.sh` 等待健康检查通过的秒数 |
+| `STOP_TIMEOUT` | `20` | `stop.sh` 等待优雅退出的秒数 |
+| `CHILD_EXIT_TIMEOUT` | `20` | 守护循环等待 uvicorn 退干净、才补 `SIGKILL` 的秒数 |
+| `OFFICE_BUYER_RUNTIME_DIR` | `server/run` | PID / 状态 / 停止标记 / 守护日志目录 |
+| `VENV_DIR` | `server/.venv` | 虚拟环境目录 |
+
+端口用 `PORT=9000 ./scripts/start.sh` 起过之后，`status.sh` / `stop.sh` **不带 `PORT`
+也会找到那个实例**——启动时把实际端口写进了 `run/office-buyer.state`。停止时记得
+沿用启动时的参数。
+
+### 7.4 交接给 systemd / Docker
+
+需要开机自启时，把守护循环当前台进程交给 systemd（`Type=simple`）即可：
+
+```ini
+[Service]
+WorkingDirectory=/opt/office-buyer
+Environment=OFFICE_BUYER_TRUST_FORWARDED_FOR=1
+ExecStart=/opt/office-buyer/scripts/start.sh --foreground
+Restart=on-failure
+RestartSec=5
+TimeoutStopSec=30
+KillMode=mixed
+```
+
+`--foreground` 模式下不再 `setsid`，脚本本身就是主进程，`systemctl stop` 发出的
+`SIGTERM` 会被转达给 uvicorn 并等它退干净。此时**不要**再设 `Restart=always`——
+脚本内置的看门狗已经在做重启，两层叠加只会让退避策略互相打架。
+
+脚本启动前会解析 `server/.venv` 下的 uvicorn；找不到时自动执行一次
+`uv sync --frozen --no-dev`（与 Dockerfile 同一条命令，按 `uv.lock` 精确安装），
+因此新机器上只要装了 `uv`，`./scripts/start.sh` 一把就能跑起来。
+
+## 8. 功能验证
 
 pytest 套件（推荐，覆盖 89 项用例）。上游被 `httpx.MockTransport` 完全替换，
 无需联网、不依赖 maishou88 可用性，也不会产生真实上游请求：
@@ -307,10 +421,10 @@ uv run python ../skill/scripts/main.py detail --source=2 --id=123456789
 uv run python ../skill/scripts/main.py unmatched
 ```
 
-## 8. 维护映射表
+## 9. 维护映射表
 
 1. 编辑 `app/data/*.json`（保留 `_meta` 块，其余键为设备型号特征串）。
-2. 无需重启：`curl -X POST http://localhost:8446/api/v1/consumable/reload`。
+2. 无需重启：`curl -X POST http://localhost:11443/api/v1/consumable/reload`。
 3. 用 `/api/v1/consumable/unmatched` 的 Top 关键词决定优先补录哪些机型。
 4. `aliases` 数组请尽量补全同系列型号（如 `M126a` 补上 `M126nw/P1106/P1108`），
    它们共享同一耗材，能显著提高命中率。

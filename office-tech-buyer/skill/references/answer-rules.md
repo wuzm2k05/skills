@@ -117,6 +117,35 @@ uv run scripts/main.py search --source=0 --keyword='PD-201 碳粉盒 适用'
 > `calculate_per_pack_price` → 包 ｜ `calculate_per_roll_price` → 卷
 > `calculate_per_label_price` → 张 ｜ `calculate_per_piece_price` → 个
 
+
+### 2.3 严禁行为（对2.1和2.2都适用）
+1. 严禁删除表格中的【购买链接】列！
+2. 严禁将购买链接单独写在表格下方！
+3. 表格内必须使用 `[查看详情](真实url)` 格式，不得直接粘贴原始长链接。
+
+### 2.4 交付前机器自检（强制）
+
+把渲染好的回答**原样**喂给自检脚本，退出码非 0 就说明链接没写进表格，必须重新生成，
+不得把这份回答交给用户：
+
+```shell
+# 回答已落盘时（推荐）
+uv run scripts/check_answer.py --file /tmp/answer.md
+
+# 直接从标准输入
+cat /tmp/answer.md | uv run scripts/check_answer.py
+
+# 临时内联（注意引号转义）
+uv run scripts/check_answer.py --text '……回答原文……'
+```
+
+脚本输出的 JSON 里 `violations` 逐条给出违规行号与原因，`instruction` 是可直接照做的
+重写指令。退出码：`0` 通过；`1` 有必须修正项（**必须重新生成**）；`2` 输入有问题。
+
+覆盖的走样形态：整列【购买链接】被删掉；该列为空、写 `-`/`url` 等占位符、或直接粘裸
+长链接；链接或淘口令被挪到表格下方、回答末尾、另起一段的清单里。
+数据来源声明那一行是唯一允许出现在表格外的带链接行。
+
 ---
 
 ## 3. 属性与供应类型识别（必须显式标注）
@@ -167,7 +196,7 @@ uv run scripts/main.py search --source=0 --keyword='PD-201 碳粉盒 适用'
 
 ## 6. 必附数据来源声明（结尾粘贴）
 
-> 数据来源：第三方聚合平台（maishou88.com），查询无需登录用户账号；商品价格、库存、优惠券与发票政策实时变动，仅供采购参考，最终价格与开票能力以各平台实际下单页面为准。
+> 数据来源：第三方聚合平台，查询无需登录用户账号；商品价格、库存、优惠券与发票政策实时变动，仅供采购参考，最终价格与开票能力以各平台实际下单页面为准。
 
 ---
 
@@ -181,3 +210,5 @@ uv run scripts/main.py search --source=0 --keyword='PD-201 碳粉盒 适用'
 - [ ] 每个查询过的渠道都说明了状态（含 NO_RESULTS / 未授权）
 - [ ] 未使用"全网最低"等无覆盖保证的表述
 - [ ] 已附数据来源声明
+- [ ] 购买链接是否放在了表格里面，而不是放在外面
+- [ ] 已跑 `uv run scripts/check_answer.py --file <回答文件>`，退出码为 0

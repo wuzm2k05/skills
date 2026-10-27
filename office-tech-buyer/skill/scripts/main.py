@@ -25,8 +25,8 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
-# 本机自测时改回这台地址（服务端默认监听 8446）
-#DEFAULT_SERVER_URL = "http://localhost:8446"
+# 本机自测时改回这台地址（服务端默认监听 11443）
+#DEFAULT_SERVER_URL = "http://localhost:11443"
 DEFAULT_SERVER_URL = "https://api.ninenode.com/api/office-buyer"
 API_PREFIX = "/api/v1"
 TIMEOUT_SECONDS = 60.0

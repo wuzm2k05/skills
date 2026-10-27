@@ -41,7 +41,7 @@ metadata:
         label: Install uv (pip)
     env:
       - name: OFFICE_BUYER_SERVER_URL
-        description: "云端比价服务地址，默认 https://api.ninenode.com/api/office-buyer（本机自测填 http://localhost:8446）"
+        description: "云端比价服务地址，默认 https://api.ninenode.com/api/office-buyer（本机自测填 http://localhost:11443）"
         required: false
 ---
 
@@ -99,13 +99,26 @@ uv run scripts/main.py mapping --device='M126a'
 uv run scripts/main.py unmatched
 ```
 
+### 交付前自检（强制）
+
+回答渲染完成后，**必须**先把原文喂给自检脚本再交给用户。只要脚本退出码非 0，
+说明购买链接没写进表格，必须按它给出的 `instruction` 重新生成，不得直接输出：
+
+```shell
+uv run scripts/check_answer.py --file /tmp/answer.md   # 回答已落盘（推荐）
+cat /tmp/answer.md | uv run scripts/check_answer.py    # 从标准输入
+```
+
+退出码 `0` 通过，`1` 有必须修正项，`2` 输入有问题。产物为 JSON：`violations`
+逐条给出违规行号与原因，`instruction` 是给宿主 AI 的重写指令。
+
 ## 云端服务配置
 
 脚本默认连生产环境 `https://api.ninenode.com/api/office-buyer`。本机自测时指向本地服务
-（服务端默认监听 `8446`）：
+（服务端默认监听 `11443`）：
 
 ```shell
-export OFFICE_BUYER_SERVER_URL='http://localhost:8446'
+export OFFICE_BUYER_SERVER_URL='http://localhost:11443'
 ```
 
 ## 输出交付规则
@@ -114,11 +127,16 @@ export OFFICE_BUYER_SERVER_URL='http://localhost:8446'
 
 - **先看 `matched` 字段**：为 `false` 时必须执行「宿主 AI 智能匹配兜底」——自行推理耗材/配件型号并二次调用 `search`，再合并展示。
 - **数据强绑定**：1 行表格 = 1 条原始记录，严禁跨记录拼凑价格、规格与链接。
+- **必须将购买链接放在表格中**：链接的写法只占两个汉字宽度，不会撑坏表格——“表格太宽/链接太长”不构成省略该列的理由。严禁将链接放在表格外或回答末尾。
 - **区分供应类型**：原装与第三方兼容耗材必须分栏或分行展示，不得混价比较。
 - **纸品按单价横比**：复印纸/文具类必须折算到「¥/包」「¥/卷」「¥/支」再比较总价。
 - **证据不足不臆断**：专票与质保只在有明确字段依据时标注，缺失写"未标注"。
 - **必附数据来源声明**。
+- **交付前跑自检**：`uv run scripts/check_answer.py`，退出码非 0 必须重新生成（见上）。
 
 ## 关于脚本
 
-本技能提供的脚本不会读写本地文件，可放心使用。脚本仅作为客户端请求云端服务，以及由云端转请求三方比价平台（maishou88.com）的商品与价格数据。
+本技能提供的脚本不会写入本地文件，可放心使用。`scripts/main.py` 仅作为客户端请求云端服务，
+以及由云端转请求三方比价平台的商品与价格数据；`scripts/check_answer.py`
+是纯本地的格式自检器，只读取你传给它的回答文本（`--text` / stdin）或你指定的文件
+（`--file`），不发起任何网络请求。

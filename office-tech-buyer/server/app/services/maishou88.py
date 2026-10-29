@@ -239,7 +239,13 @@ class MaishouClient:
     # -- 清洗 -------------------------------------------------------------- #
     @staticmethod
     def clean_search_rows(rows: list[dict[str, Any]], limit: int) -> list[dict[str, Any]]:
-        """把上游原始行裁剪为统一结构，并计算券后到手价参考。"""
+        """把上游原始行裁剪为统一结构，并计算券后到手价参考。
+
+        ``limit`` 是**跨渠道合计**的上限，而上游是按相关度把各渠道结果交错
+        返回的，所以截断会按渠道偏斜（实测「戴尔 PowerEdge R750」京东腿从
+        20 条被砍到 2 条，纯原装行则整体落在头部之后）。调用方请给足
+        ``settings.max_items_per_query``，不要指望在小 limit 下「采样」到全渠道。
+        """
         cleaned: list[dict[str, Any]] = []
         for idx, raw in enumerate(rows[:limit], start=1):
             source = raw.get("sourceType")
@@ -346,6 +352,13 @@ def parse_invoice(text: str) -> dict[str, Any]:
 
     只在有明确信号词时给出 ``supported``；仅出现"发票"而无法判断类型时返回
     ``None``，由客户端如实标注"专票未标注"，不得默认按支持处理。
+
+    注意：上游详情接口**不提供开票资质字段**。实测扫描 detail 全部 69~70 个
+    字段（京东/拼多多/天猫）均无「发票/专票/质保/保修/联保/三包」信号，``desc``
+    是标题回显、``shopInfo`` 恒为空数组。所以这里喂进来的 ``blob`` 只是标题+
+    店铺名的拼接，本函数对真实数据**必然**落在「未标注」分支——它的价值在于
+    一旦上游补上该字段就能立即生效，以及宿主 AI 拿到合成文本时的行为可测
+    （见 tests/test_detail.py 的 TestInvoiceParsing）。
     """
     blob = text or ""
     for neg in INVOICE_NEGATIVE:
@@ -360,7 +373,11 @@ def parse_invoice(text: str) -> dict[str, Any]:
             "evidence": "标题/详情提及发票但未明确类型",
             "confidence": "low",
         }
-    return {"supported": None, "evidence": "未标注", "confidence": "none"}
+    return {
+        "supported": None,
+        "evidence": "上游详情接口未提供开票资质字段（已扫描全部返回字段）",
+        "confidence": "none",
+    }
 
 
 def parse_warranty(text: str) -> dict[str, Any]:

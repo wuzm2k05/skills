@@ -37,6 +37,7 @@ async def _run_query(
             "count": 0,
             "status": "UPSTREAM_ERROR",
             "error": exc.message,
+            "channels": [],
             "items": [],
         }
 
@@ -51,6 +52,7 @@ async def _run_query(
             "count": 0,
             "status": "NO_RESULTS",
             "error": None,
+            "channels": [],
             "items": [],
         }
 
@@ -65,8 +67,31 @@ async def _run_query(
         "count": len(items),
         "status": "OK",
         "error": None,
+        "channels": _channels_of(items),
         "items": items,
     }
+
+
+def _channels_of(items: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """统计一批结果实际来自哪些渠道（供宿主 AI 如实声明覆盖范围）。
+
+    上游 ``sourceType=0`` 并不等于「全部渠道」：实测 8 个关键词 × 2 页的并集只有
+    1/2/3（淘宝天猫/京东/拼多多），苏宁、唯品会、抖音、快手零条；单独指定
+    ``source=4/5/7/8`` 却各有 20 条。所以覆盖范围必须由**实际返回的数据**推导，
+    不能由请求参数推导。
+    """
+    counter: dict[int, int] = {}
+    for item in items:
+        source = int(item.get("source") or 0)
+        counter[source] = counter.get(source, 0) + 1
+    return [
+        {
+            "source": source,
+            "platform": SOURCE_NAMES.get(source, f"渠道{source}"),
+            "count": count,
+        }
+        for source, count in sorted(counter.items())
+    ]
 
 
 @router.get("/search", summary="办公设备/耗材全网比价搜索")
@@ -80,7 +105,7 @@ async def search(
 
     - 命中映射表：并发查询「主设备 + 原装耗材 + 兼容耗材/扩展配件」，返回 ``matched: true``。
     - 未命中映射表：记录 ``logs/unmatched.log``，仅用原始关键词查询，返回 ``matched: false``，
-      由客户端宿主 AI 按 ``references/answer-rules.md`` 推导耗材型号后二次调用。
+      由客户端宿主 AI 按 ``references/answer-rules.md`` 改用「设备型号 + 耗材类别词」二次调用。
     """
     ip = client_ip(request)
     match = engine.build_match(keyword)
@@ -96,6 +121,7 @@ async def search(
             kind="primary",
             label="原始关键词直搜",
         )
+        enriched = _enrich_query(primary, match)
         return {
             "matched": False,
             "keyword": keyword,
@@ -104,11 +130,16 @@ async def search(
             "matched_by": match.matched_by,
             "log_line": line,
             "client_ip": ip,
+            "channels_covered": _merge_channels([enriched]),
             "hint": (
-                "云端静态映射表未命中该设备。请宿主 AI 依据自身知识推理其标准耗材/配件型号，"
-                "再以「[型号] 原装」为关键词二次调用本接口，并将结果与本次主设备结果合并呈现。"
+                "云端静态映射表未命中该设备。请宿主 AI 改用「设备型号 + 耗材类别词」再次调用本接口"
+                "（如「惠普 DeskJet 2720 墨盒」「奔图 P2200 碳粉盒」），以返回的 "
+                "items[].attributes.supply_type / model_code 判断实际在售的原装与兼容耗材；"
+                "不要凭设备型号推测耗材型号，最后与本次主设备结果合并呈现。"
             ),
-            "queries": [primary],
+            # 未命中同样要补属性解析：补搜耗材时宿主 AI 靠 items[].attributes
+            # 区分原装/兼容、读 model_code，缺了这一层就只能看到裸标题。
+            "queries": [enriched],
         }
 
     # 命中：主查询 + 关联查询并发执行
@@ -140,8 +171,26 @@ async def search(
         "unit_price_basis": match.unit_price_basis,
         "notes": match.notes,
         "client_ip": ip,
+        "channels_covered": _merge_channels(queries),
         "queries": queries,
     }
+
+
+def _merge_channels(queries: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """汇总本次所有查询实际覆盖到的渠道（去重后按 source 升序）。"""
+    counter: dict[int, int] = {}
+    for query in queries:
+        for channel in query.get("channels") or []:
+            source = int(channel["source"])
+            counter[source] = counter.get(source, 0) + int(channel["count"])
+    return [
+        {
+            "source": source,
+            "platform": SOURCE_NAMES.get(source, f"渠道{source}"),
+            "count": count,
+        }
+        for source, count in sorted(counter.items())
+    ]
 
 
 def _enrich_query(query: dict[str, Any], match: engine.MatchResult) -> dict[str, Any]:

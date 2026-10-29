@@ -103,7 +103,14 @@ def build_parser() -> argparse.ArgumentParser:
     sub = parser.add_subparsers(dest="command")
 
     search_parser = sub.add_parser("search", help="搜索办公设备、耗材或纸品文具")
-    search_parser.add_argument("--keyword", required=True, help="搜索关键词，如 '惠普 M126a'")
+    search_parser.add_argument(
+        "--keyword",
+        required=True,
+        help=(
+            "搜索关键词，如 '惠普 M126a'；查配套耗材用「设备型号 + 耗材类别词」，"
+            "如 '惠普 DeskJet 2720 墨盒'"
+        ),
+    )
     search_parser.add_argument(
         "--source",
         default="0",
@@ -116,11 +123,6 @@ def build_parser() -> argparse.ArgumentParser:
     detail_parser.add_argument(
         "--source", required=True, help="渠道来源，必须与 search 结果中的 source 一致"
     )
-
-    mapping_parser = sub.add_parser(
-        "mapping", help="查询某设备对应的耗材/配件映射（映射未命中时提示 AI 推导）"
-    )
-    mapping_parser.add_argument("--device", required=True, help="设备型号，如 'M126a'")
 
     sub.add_parser("unmatched", help="查看云端未命中关键词日志统计（运维用）")
 
@@ -135,13 +137,11 @@ def dispatch(args: argparse.Namespace) -> dict:
         )
     if args.command == "detail":
         return request("/detail", {"id": args.id, "source": str(args.source)})
-    if args.command == "mapping":
-        return request("/consumable/mapping", {"device": args.device})
     if args.command == "unmatched":
         return request("/consumable/unmatched", {"limit": "200"})
     return {
         "status": "NO_COMMAND",
-        "message": "请指定子命令：search / detail / mapping / unmatched",
+        "message": "请指定子命令：search / detail / unmatched",
         "server": server_url(),
     }
 

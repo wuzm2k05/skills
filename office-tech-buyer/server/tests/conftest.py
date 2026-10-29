@@ -30,16 +30,24 @@ PLATFORMS = {1: "淘宝/天猫", 2: "京东", 3: "拼多多"}
 # 上游假响应
 # --------------------------------------------------------------------------- #
 def search_payload(keyword: str, source: int, page: int) -> dict:
-    """按关键词造 3 条稳定的假商品，覆盖包装规格相关的典型标题写法。"""
+    """按关键词造稳定的假商品，覆盖包装规格与供应类型的典型标题写法。
+
+    刻意让**同一个关键词**返回原装与兼容混合的行（真实上游就是这样），
+    这样测试可以验证「供应类型由每行的 attributes 判定，而不是由查询词判定」。
+    """
     rows = []
     for idx, source_type in enumerate((2, 1, 3), start=1):
         if "复印纸" in keyword:
             spec = {1: "5包箱装 2500张", 2: "1包 500张 单包", 3: "20包 整箱批发"}[idx]
             title = f"{keyword} {spec}"
-        elif "88A" in keyword and "原装" in keyword:
-            title = "惠普(HP) CC388A 88A 原装碳粉盒 硒鼓"
         elif "88A" in keyword:
-            title = "适用惠普 88A 碳粉盒 兼容 M126a M1136 国产"
+            # 同一批结果里混着原装与兼容：idx=1 是带原厂前缀的原装款，
+            # idx=2/3 是标题里写「适用」「原装」的第三方款。
+            title = {
+                1: "惠普(HP) CC388A 88A 原装碳粉盒 硒鼓",
+                2: "适用惠普 88A 碳粉盒 兼容 M126a M1136 国产",
+                3: "惠普 88A 碳粉盒 原装 再生 得力388AXT",
+            }[idx]
         else:
             title = f"{keyword} 商用办公款 {PLATFORMS.get(source_type, '')}"
         rows.append(
@@ -59,7 +67,11 @@ def search_payload(keyword: str, source: int, page: int) -> dict:
     return {"code": 200, "message": "ok", "data": rows}
 
 
+#: 详情响应里刻意放一个**不同于请求参数**的 goodsId：上游会把天猫/京东的
+#: goodsId 重映射成内部值（实测 12 次里 8 次变异），而 clean_detail 必须回填
+#: 调用方传入的那个 id，否则客户端拿它再去查详情就会查错商品。
 DETAIL_DATA = {
+    "goodsId": "9999999999",
     "title": "惠普 M126a 多功能一体机 支持增值税专用发票 全国联保 1年上门服务",
     "shopName": "京东自营官方旗舰店",
     "originalPrice": 1299,

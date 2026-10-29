@@ -2,9 +2,9 @@
 name: office-tech-buyer
 display_name: "办公设备易采买"
 display_name_en: "Office Tech Buyer"
-description: "专为企业行政、IT运维与办公采购打造的全品类智能化比价工具。支持电脑整机、服务器、打印机、人体工学椅全网底价查询，独家支持【原装 vs 兼容耗材】精准匹配、复印纸/纸品单价换算及增值税专票/质保对比。"
-description_zh: "【办公采买不踩坑】支持电脑/服务器/打印机/复印纸/办公椅全网比价，智能匹配耗材型号与专票/质保信息"
-description_en: "Cross-platform price comparison for office hardware and consumables, with OEM-vs-compatible matching, paper unit-price conversion, and VAT invoice / warranty parsing"
+description: "专为企业行政、IT运维与办公采购打造的全品类智能化比价工具。支持电脑整机、服务器、打印机、人体工学椅全网底价查询，独家支持【原装 vs 兼容耗材】精准匹配与复印纸/纸品单价换算。"
+description_zh: "【办公采买不踩坑】支持电脑/服务器/打印机/复印纸/办公椅全网比价，智能匹配耗材型号并区分原装与第三方兼容"
+description_en: "Cross-platform price comparison for office hardware and consumables, with OEM-vs-compatible matching and paper unit-price conversion"
 version: 1.1.0
 author: 玖结点信息技术有限公司
 icon: "_icon.png"
@@ -53,8 +53,10 @@ metadata:
 
 ```yaml
 # 渠道参数
+# ⚠️ source=0（"全部"）实测只覆盖 1/2/3 三家，苏宁/唯品会/抖音/快手需要显式指定。
+#    覆盖范围以响应里的 channels_covered 为准，不要从该参数推断。
 source:
-  0: 全部
+  0: 全部（实测仅含 1/2/3）
   1: 淘宝/天猫
   2: 京东
   3: 拼多多
@@ -75,6 +77,9 @@ uv run scripts/main.py search --source=0 --keyword='戴尔 PowerEdge R750'
 uv run scripts/main.py search --source=0 --keyword='联想 ThinkCentre M730q 台式机'
 uv run scripts/main.py search --source=0 --keyword='A4 复印纸 70g'
 
+# 配套耗材：设备型号 + 耗材类别词（详见下节）
+uv run scripts/main.py search --source=0 --keyword='惠普 DeskJet 2720 墨盒'
+
 # 指定渠道与页码
 uv run scripts/main.py search --source=2 --keyword='奔图 P2200' --page=2
 ```
@@ -87,11 +92,36 @@ uv run scripts/main.py detail --source={source} --id={goodsId}
 
 解析注意：`detail` 返回的 JSON 中，`data.buy_url`（购买链接）与 `data.coupon_code`（淘口令）是核心字段。必须读取完整输出，严禁用 `tail` 或管道截断，否则可能导致链接遗失。
 
-### 查询设备与耗材映射
+`data.goodsId` 是**回填的调用参数**（上游自己返回的 id 常与请求值不同，不要用它去二次查询）。
+顶层 `invoice_data_available: false` 表示上游未提供开票资质字段——此时在回答里整列
+说明一次"平台未提供开票信息"，不要逐行写"专票未标注"。
+
+### 查询配套耗材（设备型号 + 耗材类别词）
+
+查某台设备的耗材，**不需要先查映射表**，直接把设备型号和一个耗材类别词拼成关键词搜：
 
 ```shell
-uv run scripts/main.py mapping --device='M126a'
+uv run scripts/main.py search --source=0 --keyword='惠普 DeskJet 2720 墨盒'
+uv run scripts/main.py search --source=0 --keyword='奔图 P2200 碳粉盒'
+uv run scripts/main.py search --source=0 --keyword='戴尔 PowerEdge R750 2.5寸 硬盘托架'
 ```
+
+- **为什么带上设备型号**：电商标题普遍写成「适用 惠普 2720 墨盒」，带上机型能同时召回
+  原装款与第三方兼容款，比只搜一个型号代码召回更全。
+- **词序：`{设备} {类别词} {规格}`**。规格必须排在类别词**之后**——实测
+  「戴尔 R750 服务器内存 ECC RDIMM」有 21 条，而把规格挪到类别词前面的
+  「戴尔 R750 ECC RDIMM 服务器内存」只剩 **1 条**。
+- **规格只用来看，不用来筛**：不要自行往关键词里加 `RDIMM`/`UDIMM`（上游会当精确
+  筛选：8 台服务器同一批 base 从 246 条掉到 70 条）或容量/频率（`32G` 一加 40 条变
+  25 条）。规格是否对口看每行的 `items[].attributes.spec_match`。
+- **型号以搜索结果为准**：结果里的 `items[].attributes.supply_type`（`原装` /
+  `第三方兼容`）与 `items[].attributes.model_code`（型号）就是这台机器实际在售的规格。
+  **不要凭设备型号自行推测耗材型号，更不要拿推测出的型号去下单。**
+- 已经知道原装型号时（机身标签 / 说明书）也可以直接用它搜：`--keyword='CC388A 碳粉盒'`。
+  **不要加「原装」或「适用」后缀**：上游对这两个词不做筛选，加了只是白占一次查询。
+  供应类型改看返回的 `items[].attributes.supply_type`。
+
+类别词怎么选、`matched: false` 时怎么补搜，见 `references/answer-rules.md` 第 1 节。
 
 ### 查看云端未命中日志统计（运维用）
 
@@ -125,7 +155,7 @@ export OFFICE_BUYER_SERVER_URL='http://localhost:11443'
 
 回答前先 Read `references/answer-rules.md`，按规范格式进行 Markdown 渲染。核心要求：
 
-- **先看 `matched` 字段**：为 `false` 时必须执行「宿主 AI 智能匹配兜底」——自行推理耗材/配件型号并二次调用 `search`，再合并展示。
+- **先看 `matched` 字段**：为 `false` 时执行「宿主 AI 智能匹配兜底」——用「设备型号 + 耗材类别词」二次调用 `search`（见 `references/answer-rules.md` 第 1 节），再合并展示。不要凭设备型号推测耗材型号。
 - **数据强绑定**：1 行表格 = 1 条原始记录，严禁跨记录拼凑价格、规格与链接。
 - **必须将购买链接放在表格中**：链接的写法只占两个汉字宽度，不会撑坏表格——“表格太宽/链接太长”不构成省略该列的理由。严禁将链接放在表格外或回答末尾。
 - **区分供应类型**：原装与第三方兼容耗材必须分栏或分行展示，不得混价比较。

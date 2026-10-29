@@ -118,7 +118,6 @@ async def root() -> dict[str, Any]:
         "endpoints": [
             f"{settings.api_prefix}/search?keyword=惠普 M126a&source=0&page=1",
             f"{settings.api_prefix}/detail?source=2&id=123456789",
-            f"{settings.api_prefix}/consumable/mapping?device=M126a",
             f"{settings.api_prefix}/consumable/unmatched",
             f"{settings.api_prefix}/consumable/reload",
         ],

@@ -45,7 +45,11 @@ def check(name: str, condition: bool, detail: str = "") -> None:
 # 上游打桩
 # --------------------------------------------------------------------------- #
 def _search_payload(keyword: str, source: int, page: int) -> dict:
-    """按关键词造几条稳定的假商品数据。"""
+    """按关键词造稳定的假商品数据。
+
+    与 tests/conftest.py 的 ``search_payload`` 保持同构：同一关键词下原装与兼容
+    行混在一起，用于验证「供应类型由每行的 attributes 判定，不由查询词判定」。
+    """
     rows = []
     platform_titles = {
         1: "淘宝/天猫",
@@ -56,10 +60,12 @@ def _search_payload(keyword: str, source: int, page: int) -> dict:
         if "复印纸" in keyword:
             spec = {1: "5包箱装 2500张", 2: "1包 500张 单包", 3: "20包 整箱批发"}[idx]
             title = f"{keyword} {spec}"
-        elif "88A" in keyword and "原装" in keyword:
-            title = "惠普(HP) CC388A 88A 原装碳粉盒 硒鼓"
         elif "88A" in keyword:
-            title = "适用惠普 88A 碳粉盒 兼容 M126a M1136 国产"
+            title = {
+                1: "惠普(HP) CC388A 88A 原装碳粉盒 硒鼓",
+                2: "适用惠普 88A 碳粉盒 兼容 M126a M1136 国产",
+                3: "惠普 88A 碳粉盒 原装 再生 得力388AXT",
+            }[idx]
         else:
             title = f"{keyword} 商用办公款 {platform_titles.get(source_type, '')}"
         rows.append(
@@ -83,6 +89,9 @@ def _detail_payload(goods_id: str, source: int) -> dict:
     return {
         "code": 200,
         "data": {
+            # 刻意放一个与请求参数不同的 goodsId：上游会把天猫/京东的 id 重映射，
+            # clean_detail 必须回填调用方传入的那个。
+            "goodsId": "9999999999",
             "title": "惠普 M126a 多功能一体机 支持增值税专用发票 全国联保 1年上门服务",
             "shopName": "京东自营官方旗舰店",
             "originalPrice": 1299,
@@ -177,8 +186,16 @@ async def run() -> int:
         check("matched_by=consumables", body.get("matched_by") == "consumables")
         kinds = [q["kind"] for q in body.get("queries", [])]
         check("包含 primary 查询", "primary" in kinds, str(kinds))
-        check("包含 original 耗材查询", "original" in kinds, str(kinds))
-        check("包含 compatible 耗材查询", "compatible" in kinds, str(kinds))
+        check("包含 consumable 耗材查询", "consumable" in kinds, str(kinds))
+        check(
+            "耗材关键词不带「原装/适用」后缀",
+            all(
+                "原装" not in q["keyword"] and "适用" not in q["keyword"]
+                for q in body["queries"]
+                if q["kind"] == "consumable"
+            ),
+            str([q["keyword"] for q in body["queries"] if q["kind"] == "consumable"]),
+        )
         primary = next(q for q in body["queries"] if q["kind"] == "primary")
         check("主查询有结果", primary["count"] == 3, str(primary["count"]))
         check("主查询 status=OK", primary["status"] == "OK", primary["status"])
@@ -187,17 +204,30 @@ async def run() -> int:
         check("商品含 attributes.supply_type", "supply_type" in first["attributes"])
         check("商品含 coupon_desc 字段", "coupon_desc" in first)
         check("整机/耗材类不做单价折算", first["unit_price"] is None, str(first["unit_price"]))
-        original_q = next(q for q in body["queries"] if q["kind"] == "original")
+        consumable_q = next(q for q in body["queries"] if q["kind"] == "consumable")
+        tiers = [i["attributes"]["supply_type"] for i in consumable_q["items"]]
         check(
-            "原装耗材条目标注 supply_type=原装",
-            original_q["items"][0]["attributes"]["supply_type"] == "原装",
-            original_q["items"][0]["attributes"]["supply_type"],
+            "同批耗材结果里原装与兼容并存，按行 attributes 区分",
+            "原装" in tiers and "第三方兼容" in tiers,
+            str(tiers),
         )
-        compat_q = next(q for q in body["queries"] if q["kind"] == "compatible")
+        oem = [
+            i["attributes"]
+            for i in consumable_q["items"]
+            if i["attributes"].get("supply_tier") == "oem_likely"
+        ]
+        check("带原厂前缀的原装款标注 supply_tier=oem_likely", len(oem) == 1, str(len(oem)))
         check(
-            "兼容耗材条目标注 supply_type=第三方兼容",
-            compat_q["items"][0]["attributes"]["supply_type"] == "第三方兼容",
-            compat_q["items"][0]["attributes"]["supply_type"],
+            "标称原装的再生品 supply_tier 降级为 compatible",
+            any(
+                i["attributes"].get("supply_tier") == "compatible"
+                for i in consumable_q["items"]
+            ),
+        )
+        check(
+            "channels_covered 由实际数据推导（source=0 实测只有 1/2/3）",
+            {c["source"] for c in body["channels_covered"]} == {1, 2, 3},
+            json.dumps(body["channels_covered"], ensure_ascii=False),
         )
         check("未命中日志未被写入", not log_path.exists())
 
@@ -324,20 +354,74 @@ async def run() -> int:
         body = r.json()
         check("buy_url 为空", body["data"]["buy_url"] == "")
         check("warnings 提示未授权", any("未授权" in w for w in body["warnings"]), str(body["warnings"]))
+        check("warnings 带上渠道名", any("拼多多" in w for w in body["warnings"]), str(body["warnings"]))
+        check(
+            "warnings 区分「下架/不支持转链」等其它可能原因",
+            any("下架" in w for w in body["warnings"]),
+            str(body["warnings"]),
+        )
 
-        print("\n[7] 映射查询接口")
-        r = await api.get("/api/v1/consumable/mapping", params={"device": "R750"})
+        print("\n[6b] 详情字段完整性")
+        r = await api.get("/api/v1/detail", params={"source": 2, "id": "210001"})
         body = r.json()
-        check("matched=true", body.get("matched") is True)
-        check("category=服务器", body.get("category") == "服务器", str(body.get("category")))
-        check("返回 4 条配件关键词", len(body["related"]) == 4, str(len(body["related"])))
-        r = await api.get("/api/v1/consumable/mapping", params={"device": "某不存在设备XYZ"})
-        check("未命中时给出 AI 兜底 hint", r.json()["matched"] is False and "hint" in r.json())
+        check(
+            "返回调用方传入的 goodsId（上游会重映射，不得回显上游值）",
+            body["goodsId"] == "210001" and body["data"]["goodsId"] == "210001",
+            f'{body["goodsId"]} / {body["data"]["goodsId"]}',
+        )
+        check(
+            "显式声明上游未提供开票资质字段",
+            body["invoice_data_available"] is False,
+            str(body.get("invoice_data_available")),
+        )
+
+        print("\n[6c] 服务器配件关键词：只追加 ECC、不写死容量/频率")
+        r = await api.get("/api/v1/search", params={"keyword": "戴尔 PowerEdge R750"})
+        body = r.json()
+        acc = [q for q in body["queries"] if q["kind"] == "accessory"]
+        check("命中 server_hardware", body["matched_by"] == "server_hardware", body["matched_by"])
+        memory = next((q["keyword"] for q in acc if "内存" in q["keyword"]), "")
+        check(
+            "内存关键词规格后置、只追加 ECC",
+            memory == "戴尔 R750 服务器内存 ECC",
+            memory,
+        )
+        check(
+            "内存关键词不含形态词与代际（只做 spec_match 标注）",
+            not any(t in memory for t in ("RDIMM", "UDIMM", "LRDIMM", "DDR4", "DDR5")),
+            memory,
+        )
+        check(
+            "内存关键词不含容量与频率（由用户需求决定）",
+            "32G" not in memory and "3200MHz" not in memory,
+            memory,
+        )
+        check(
+            "配件结果标注 spec_match 且未被过滤",
+            all(
+                i["attributes"]["spec_match"]["verdict"] in {"match", "conflict", "unknown"}
+                for q in acc
+                for i in q["items"]
+            )
+            and all(q["items"] for q in acc),
+            str([(q["keyword"], q["count"]) for q in acc]),
+        )
+
+        print("\n[7] mapping 接口已下线（回归保护）")
+        r = await api.get("/api/v1/consumable/mapping", params={"device": "R750"})
+        check("GET /consumable/mapping 返回 404", r.status_code == 404, str(r.status_code))
+        r = await api.get("/")
+        check(
+            "根端点清单不再列出 mapping",
+            not any("consumable/mapping" in e for e in r.json()["endpoints"]),
+            str(r.json()["endpoints"]),
+        )
 
         print("\n[8] 未命中统计")
         r = await api.get("/api/v1/consumable/unmatched", params={"limit": 50})
         stats = r.json()["stats"]
-        check("统计 total >= 2", stats["total"] >= 2, str(stats["total"]))
+        # 计数只来自 [3] 的 /search 未命中；原先 [7] 的 mapping 未命中也会写一条，该端点已下线
+        check("统计 total >= 1", stats["total"] >= 1, str(stats["total"]))
         check(
             "Top 关键词含未知型号",
             any("未知冷门设备型号123" == k["keyword"] for k in stats["top_keywords"]),

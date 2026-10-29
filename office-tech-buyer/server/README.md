@@ -43,7 +43,6 @@ uv run python -m app.main
 | :--- | :--- | :--- |
 | GET | `/api/v1/search` | 品类识别 + 主设备/耗材/配件并发比价 |
 | GET | `/api/v1/detail` | 购买链接、淘口令、专票与质保解析 |
-| GET | `/api/v1/consumable/mapping` | 设备 → 耗材/配件映射查询 |
 | GET | `/api/v1/consumable/unmatched` | 未命中关键词统计（运维） |
 | POST | `/api/v1/consumable/reload` | 热重载 `app/data/*.json`（运维） |
 | GET | `/health` | 健康检查（含映射表条数与日志滚动状态） |
@@ -59,47 +58,64 @@ curl "http://localhost:11443/api/v1/search?keyword=%E6%9C%AA%E7%9F%A5%E5%86%B7%E
 
 # 商品详情
 curl "http://localhost:11443/api/v1/detail?source=2&id=123456789"
-
-# 映射查询
-curl "http://localhost:11443/api/v1/consumable/mapping?device=M126a"
 ```
 
 ### `search` 响应结构
 
 ```jsonc
 {
-  "matched": true,                  // false 时客户端宿主 AI 需自行推理耗材型号并二次查询
+  "matched": true,                  // false 时客户端宿主 AI 需用「设备型号 + 耗材类别词」再搜一轮
   "keyword": "惠普 M126a",
   "category": "多功能一体机",
   "matched_by": "consumables",      // consumables | server_hardware | paper_spec | none
   "match_key": "M126a",
   "device_name": "惠普 HP LaserJet Pro MFP M126a",
-  "attributes": { "consumable_type": "碳粉盒/硒鼓", "model_code": "CC388A / 88A", "match_how": "key_substring" },
+  "attributes": { "consumable_type": "碳粉盒/硒鼓", "model_code": "CC388A / 88A",
+                  "model_keywords": ["惠普 88A 碳粉盒"], "match_how": "key_substring" },
   "unit_calculation": null,         // 纸品/文具才有值，如 calculate_per_pack_price
+  "channels_covered": [             // 本次**实际**返回数据的渠道，不是请求参数的回显
+    { "source": 1, "platform": "淘宝/天猫", "count": 37 },
+    { "source": 2, "platform": "京东",      "count": 42 },
+    { "source": 3, "platform": "拼多多",     "count": 39 }
+  ],
   "queries": [
     {
       "keyword": "惠普 HP LaserJet Pro MFP M126a",
-      "kind": "primary",            // primary | original | compatible | accessory | variant
+      "kind": "primary",            // primary | consumable | accessory | variant
       "label": "主设备/主商品",
       "platform": "全部",
       "status": "OK",               // OK | NO_RESULTS | UPSTREAM_ERROR
-      "count": 20,
+      "count": 40,
+      "channels": [ { "source": 2, "platform": "京东", "count": 12 } ],
       "items": [
         {
           "goodsId": "…", "source": 2, "platform": "京东",
           "title": "…", "shopName": "…",
           "originalPrice": 1299.0, "actualPrice": 1099.0, "couponPrice": null,
           "coupon_desc": "原价 ¥1299.0，券后 ¥1099.0，省 ¥200.0",
-          "attributes": { "supply_type": "原装", "model_code": "CC388A" },
+          "attributes": { "supply_type": "原装", "supply_tier": "oem_likely",
+                          "model_code": "CC388A" },
           "unit_price": null          // 整机/耗材类恒为 null，仅纸品文具类有折算结果
         }
       ]
     },
-    { "kind": "original",   "label": "原装耗材",       "items": [] },
-    { "kind": "compatible", "label": "第三方兼容耗材", "items": [] }
+    { "kind": "consumable", "label": "惠普 88A 碳粉盒", "items": [] }
   ]
 }
 ```
+
+> ⚠️ **`kind` 是查询分类，不是供应类型判定**。`original` / `compatible` 这组
+> 旧标签已下线：上游对关键词里的「原装」「适用」**不做筛选**——「惠普 88A 碳粉盒
+> 原装」上游 52 条里 `oem_likely` 只有 2 条（¥529 / ¥1009），`compatible` 47 条
+> （最低 ¥5.0、中位 ¥28.0）；「联想 LT2451 粉盒 原装」48 条里 `oem_likely` 4 条
+> （¥279–365）、`compatible` 28 条（¥12.6 起）。
+> 供应类型一律看每行的 `attributes.supply_type`（文本信号）与
+> `attributes.supply_tier`（更保守的旁路判断）。
+
+> ⚠️ **`source=0`（"全部"）实测只覆盖淘宝/天猫、京东、拼多多三家**。跨 8 个
+> 关键词 × 2 页的并集为 `{1:309, 2:320, 3:170}`，苏宁/唯品会/抖音/快手零条；
+> 而单独指定 `source=4/5/7/8` 各能返回 20 条。因此覆盖范围**必须**读
+> `channels_covered`，不要从请求参数推断。
 
 纸品/文具类的 `unit_price` 结构：
 
@@ -116,6 +132,23 @@ curl "http://localhost:11443/api/v1/consumable/mapping?device=M126a"
 }
 ```
 
+服务器配件的 `attributes.spec_match`（**只标注，绝不过滤**）：
+
+```jsonc
+{
+  "supply_type": "原装", "supply_tier": "unknown",
+  "spec_match": {
+    "verdict": "conflict",            // match | conflict | unknown
+    "matched": [],
+    "conflicts": ["3.5寸"]            // 要 2.5 寸却出现 3.5 寸这类同族冲突
+  }
+}
+```
+
+> 同批结果里 RDIMM 与 UDIMM 会共现（「戴尔 R750 服务器内存 DDR4 ECC」20 条里
+> 两者都有），2.5 寸与 3.5 寸也 6/6 共现——按规格过滤会把结果清空，所以只标
+> `conflict` 交给宿主 AI 提示用户核对。
+
 未命中时响应形如：
 
 ```jsonc
@@ -123,7 +156,7 @@ curl "http://localhost:11443/api/v1/consumable/mapping?device=M126a"
   "matched": false,
   "keyword": "未知冷门设备型号123",
   "log_line": "[2026-10-26 12:00:00] [UNMATCHED] Keyword: 未知冷门设备型号123 | IP: 127.0.0.1",
-  "hint": "云端静态映射表未命中该设备。请宿主 AI 依据自身知识推理其标准耗材/配件型号，…",
+  "hint": "云端静态映射表未命中该设备。请宿主 AI 改用「设备型号 + 耗材类别词」再次调用本接口…",
   "queries": [{ "kind": "primary", "label": "原始关键词直搜", "items": [] }]
 }
 ```
@@ -140,7 +173,7 @@ server/
 │   │   └── v1/
 │   │       ├── search.py          # 搜索路由（并发多查询）
 │   │       ├── detail.py          # 详情路由（链接/专票/质保）
-│   │       └── consumable.py      # 映射查询与未命中统计
+│   │       └── consumable.py      # 未命中统计与映射表热重载（运维）
 │   ├── services/
 │   │   ├── maishou88.py           # 上游封装：重试/限流/请求头/清洗/专票质保解析
 │   │   └── category_engine.py     # 映射匹配、未命中日志、单价换算
@@ -239,8 +272,22 @@ unmatched.log  →  unmatched.log.1  →  unmatched.log.2  →  …  →  unmatc
 | `OFFICE_BUYER_UPSTREAM_CONCURRENCY` | `5` | 上游并发上限 |
 | `OFFICE_BUYER_UPSTREAM_MIN_INTERVAL` | `0.15` | 上游最小请求间隔（秒），防限流 |
 | `OFFICE_BUYER_MAX_RELATED_QUERIES` | `2` | 每次搜索最多附加的关联查询数 |
-| `OFFICE_BUYER_MAX_ITEMS_PER_QUERY` | `20` | 每条查询返回的商品上限 |
+| `OFFICE_BUYER_MAX_ITEMS_PER_QUERY` | `40` | 每条查询返回的商品上限（见下方说明） |
 | `OFFICE_BUYER_UPSTREAM_OPENID` 等 | 见 `config.py` | 上游鉴权参数 |
+
+> `OFFICE_BUYER_MAX_ITEMS_PER_QUERY` 不建议调低。上游把多渠道结果按相关度**交错**
+> 返回（不是按渠道分段），截断因此是按渠道偏斜的——同样的行数，砍前 20 条会让
+> 某一个渠道几乎清零。实测（`sourceType=0`）：
+>
+> | 关键词 | 上游（按渠道） | limit=20 | limit=40 |
+> |---|---|---|---|
+> | 戴尔 PowerEdge R750 | `{1:18, 2:20}` | `{1:18, 2:2}` | `{1:18, 2:20}` |
+> | 兄弟 DCP-7180DN | `{1:18, 2:20, 3:18}` | `{1:9, 2:1, 3:10}` | `{1:17, 2:10, 3:13}` |
+> | 惠普 M126a 碳粉盒 | `{1:17, 2:20, 3:20}` | `{1:11, 3:9}` | `{1:15, 2:10, 3:15}` |
+> | 联想 LT2451 粉盒 | `{1:17, 2:20, 3:14}` | `{1:5, 2:4, 3:11}` | `{1:17, 2:10, 3:13}` |
+>
+> 被清零的渠道每轮不同（京东、天猫都出现过），但「limit=20 时必有一个渠道只剩
+> 个位数」稳定成立；默认 40 能让所有渠道恢复（上游单查询上限约 60）。
 
 ## 6. Docker 部署
 
@@ -376,7 +423,7 @@ KillMode=mixed
 
 ## 8. 功能验证
 
-pytest 套件（推荐，覆盖 89 项用例）。上游被 `httpx.MockTransport` 完全替换，
+pytest 套件（推荐，覆盖 112 项用例）。上游被 `httpx.MockTransport` 完全替换，
 无需联网、不依赖 maishou88 可用性，也不会产生真实上游请求：
 
 ```bash
@@ -392,20 +439,21 @@ uv run pytest tests/test_search.py -q
 uv run pytest tests/test_category_engine.py -q
 ```
 
-另有不依赖 pytest 的独立冒烟脚本（62 项断言），适合在无开发依赖的环境里快速自检：
+另有不依赖 pytest 的独立冒烟脚本（71 项断言），适合在无开发依赖的环境里快速自检：
 
 ```bash
 uv run python -X utf8 tests/smoke_test.py
 ```
 
 覆盖内容：映射命中、未命中日志落盘与格式、纸品单价换算的保守性
-（含标题矛盾时判为 `ambiguous`）、详情专票/质保解析、未授权渠道告警、
-上游 5xx 重试降级、参数校验、映射热重载、代理头信任开关。
+（含标题矛盾时判为 `ambiguous`）、详情专票/质保解析与 `goodsId` 回填、未授权渠道告警、
+配件关键词的词序与规格标注、上游 5xx 重试降级、参数校验、映射热重载、代理头信任开关。
 
 连接真实服务器时：
 
 ```bash
-# 1. 映射命中：应返回 matched=true，且 queries 含 original / compatible 两条耗材查询
+# 1. 映射命中：应返回 matched=true，queries 含 primary + consumable，
+#    channels_covered 应只出现 1/2/3（source=0 实测只覆盖这三家）
 uv run python ../skill/scripts/main.py search --keyword="惠普 M126a"
 
 # 2. 未命中：应返回 matched=false，同时 logs/unmatched.log 新增一行
@@ -414,10 +462,13 @@ uv run python ../skill/scripts/main.py search --keyword="未知冷门设备型�
 # 3. 纸品单价换算：unit_price.basis 应为 box / single_pack / ambiguous 之一
 uv run python ../skill/scripts/main.py search --keyword="A4 复印纸 70g"
 
-# 4. 详情：应返回 buy_url / invoice / warranty
+# 4. 鼓粉分离机型：应同时出现粉盒与硒鼓两条 consumable 查询
+uv run python ../skill/scripts/main.py search --keyword="兄弟 DCP-7180DN"
+
+# 5. 详情：应返回 buy_url / invoice / warranty，且 goodsId 等于传入的 id
 uv run python ../skill/scripts/main.py detail --source=2 --id=123456789
 
-# 5. 未命中统计
+# 6. 未命中统计
 uv run python ../skill/scripts/main.py unmatched
 ```
 
@@ -428,3 +479,25 @@ uv run python ../skill/scripts/main.py unmatched
 3. 用 `/api/v1/consumable/unmatched` 的 Top 关键词决定优先补录哪些机型。
 4. `aliases` 数组请尽量补全同系列型号（如 `M126a` 补上 `M126nw/P1106/P1108`），
    它们共享同一耗材，能显著提高命中率。
+
+### 写关键词的三条硬规矩（都有实测依据）
+
+这些规律来自对上游的真实探测，不遵守就会白占 `max_related_queries` 配额或直接归零：
+
+| 规矩 | 依据 |
+| :--- | :--- |
+| 词序必须是 `{设备} {类别词} {规格...}` | 「戴尔 R750 服务器内存 ECC RDIMM」21 条，把规格挪到类别词之前只剩 **1 条**（`sourceType=2` 上为 0） |
+| 不写容量（32G/64G/128G）、不写频率 | 「戴尔 R750 服务器内存」40 条 → 加 `32G` 25 条 → 加 `DDR4 ECC 32G` 14 条；加 `ECC RDIMM 3200MHz` **0 条**。容量与频率由用户需求决定 |
+| 不写形态词（RDIMM/UDIMM）与代际（DDR4/DDR5） | 上游把它们当精确筛选：8 台服务器同一批 base，只追加 `ECC` 246 条，追加到 `DDR4 ECC` 190 条，再到 `DDR4 ECC RDIMM` 只剩 **70 条**。形态与代际交给 `spec_match` 逐行标注 |
+| 不写「原装 / 适用」后缀 | 上游不按这两个词筛选：「惠普 88A 碳粉盒 原装」52 条里 `oem_likely` 只有 2 条（¥529/¥1009），`compatible` 47 条（中位 ¥28.0） |
+
+鼓粉分离的机型（`consumable_type` 含「+」）必须在 `model_keywords` 里给出**两条**，
+让粉盒与硒鼓各自比价——DCP-7180DN 的粉盒与硒鼓差一个价位档（3 轮中位价：粉盒
+¥32.4 / ¥90.0 / ¥35.9，硒鼓 ¥82.1 / ¥92.5 / ¥87.5），漏掉的是更贵的一半。
+
+### 上游的两个已知局限
+
+- **同关键词两次请求结果偶尔整批换**：7 个关键词 × 3 组实测 Jaccard 0.72–1.0
+  （多数在 0.9 以上），但低谷出现过 0.72。做「这条查询有没有用」的判断时仍应
+  多轮并集，单轮对比会被噪声淹没。
+- **`sourceType=0` 只覆盖 1/2/3**：苏宁、唯品会、抖音、快手需要显式传 `source=4/5/7/8`。

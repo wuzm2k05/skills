@@ -24,6 +24,30 @@ class TestDetailOk:
         assert data["goodsId"] == "210001"
         assert data["source"] == 2
 
+    async def test_keeps_the_goods_id_it_was_called_with(self, api: httpx.AsyncClient) -> None:
+        """返回的 goodsId 必须是**调用方传入**的那个。
+
+        上游会把天猫/京东的 goodsId 重映射成内部值（实测 12 次里 8 次变异），
+        响应里的 id 与请求的 id 不同。客户端拿返回的 id 再去调 detail 会查错商品，
+        所以 clean_detail 必须回填传入值——这条断言就是防止有人把它「修正」成
+        上游回显值。conftest.DETAIL_DATA 刻意放了一个不同的 goodsId。
+        """
+        r = await api.get("/api/v1/detail", params={"source": 2, "id": "210001"})
+        body = r.json()
+
+        assert body["goodsId"] == "210001"
+        assert body["data"]["goodsId"] == "210001"
+
+    async def test_flags_invoice_data_as_unavailable(self, api: httpx.AsyncClient) -> None:
+        """上游详情接口不提供开票资质字段，响应要显式声明，宿主 AI 才能整列抑制。
+
+        实测扫描 detail 全部 69~70 个字段（京东/拼多多/天猫）都没有「发票/专票/
+        质保/保修/联保/三包」信号，所以这里恒为 false；解析器本身没问题
+        （见 TestInvoiceParsing 的合成文本用例）。
+        """
+        r = await api.get("/api/v1/detail", params={"source": 2, "id": "210001"})
+        assert r.json()["invoice_data_available"] is False
+
     async def test_parses_vat_invoice_and_warranty(self, api: httpx.AsyncClient) -> None:
         r = await api.get("/api/v1/detail", params={"source": 2, "id": "210001"})
         data = r.json()["data"]
@@ -55,6 +79,10 @@ class TestDetailUnauthorizedChannel:
         assert body["data"]["buy_url"] == ""
         assert body["data"]["coupon_code"] == ""
         assert any("未授权" in w for w in body["warnings"])
+        # 拿不到链接的原因不止「未授权」：商品下架/不支持转链同样会返回空，
+        # 措辞要带上渠道名并列出其它可能，避免把平台一律说成「未授权」。
+        assert any("拼多多" in w for w in body["warnings"])
+        assert any("下架" in w for w in body["warnings"])
 
 
 class TestDetailValidation:

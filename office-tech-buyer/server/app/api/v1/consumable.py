@@ -1,6 +1,7 @@
-"""设备与耗材映射查询路由。
+"""耗材运维路由：未命中关键词统计与映射表热重载。
 
-供宿主 AI 在 `matched: false` 时主动询问云端映射表，也供运维查看映射覆盖情况。
+比价流程不经过本模块 —— 耗材由 `/search` 基于设备型号自动并发带出，或由宿主 AI
+按「设备型号 + 耗材类别词」再搜一轮，两种方式都不需要先问映射表。
 """
 
 from __future__ import annotations
@@ -12,43 +13,6 @@ from fastapi import APIRouter, Query
 from ...services import category_engine as engine
 
 router = APIRouter(tags=["consumable"])
-
-
-@router.get("/consumable/mapping", summary="设备与耗材/配件映射查询")
-async def consumable_mapping(
-    device: str = Query(..., min_length=1, max_length=200, description="设备型号或关键词"),
-) -> dict[str, Any]:
-    """按设备型号查询耗材/配件映射，并对未命中情况给出 AI 兜底提示。"""
-    match = engine.build_match(device)
-    if not match.matched:
-        # 该接口是显式查询，重复写入会污染日志；仅在无匹配时记录一次
-        engine.log_unmatched(device, client_ip="-", extra="endpoint=/consumable/mapping")
-        return {
-            "matched": False,
-            "device": device,
-            "normalized_keyword": match.normalized,
-            "hint": (
-                "映射表未收录该设备。请宿主 AI 推理其耗材/配件型号，"
-                "再以「[型号] 原装」为关键词调用 /api/v1/search 二次查询。"
-            ),
-            "related": [],
-        }
-
-    return {
-        "matched": True,
-        "device": device,
-        "normalized_keyword": match.normalized,
-        "matched_by": match.matched_by,
-        "match_key": match.match_key,
-        "category": match.category,
-        "device_name": match.device_name,
-        "attributes": match.attributes,
-        "unit_calculation": match.unit_calculation,
-        "unit_price_basis": match.unit_price_basis,
-        "notes": match.notes,
-        "primary_keyword": match.primary_keyword,
-        "related": [item.as_dict() for item in match.related],
-    }
 
 
 @router.get("/consumable/unmatched", summary="未命中关键词统计（运维用）")

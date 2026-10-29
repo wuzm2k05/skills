@@ -4,12 +4,21 @@
     "schema": {
       "device_name": "设备完整名称",
       "category": "品类：服务器 / 电脑整机 / 工作站 / 笔记本 / 显示器 / 网络设备",
-      "memory_spec": "内存规格（类型/ECC/频率）",
+      "memory_spec": "内存规格（类型/ECC/频率/容量）",
       "storage_spec": "存储规格（接口/尺寸/协议）",
-      "accessory_keywords": "扩展配件搜索关键词列表",
+      "accessory_keywords": "扩展配件搜索关键词列表，按「设备 类别词 [规格]」书写，一条对应一类配件",
       "aliases": "设备别名/简称",
       "notes": "选型提示"
-    }
+    },
+    "keyword_policy": [
+      "词序：{设备} {类别词} {规格...}，规格排在类别词**之后**。把规格插到类别词中间会大幅压低召回——同一批 8 台服务器 2 轮实测，「戴尔 R750 服务器内存 ECC RDIMM」21 条，改写成「戴尔 R750 ECC RDIMM 服务器内存」只剩 1 条（sourceType=2 上为 0）。",
+      "内存类关键词不写容量（32G/64G/128G）也不写频率：容量由用户需求决定，写死会砍掉召回（「戴尔 R750 服务器内存 DDR4 ECC 32G」11 条 vs 不带的 40 条），且要 64G 的用户直接搜不到。频率（3200MHz）同理。",
+      "盘位类（2.5寸/3.5寸）关键词直接写死规格，因为不同盘位的托架物理上不通用：实测「戴尔 R750 硬盘托架」54 条里大量是 3.5 寸与其他机型混装，加 2.5寸 后 23 条但几乎全对口。",
+      "服务器内存由 category_engine 追加 `ECC` 一个 token（见 KEYWORD_SPEC_RE）：8 台服务器同一批 base，不追加后缀合计 260 条、只追加 `ECC` 246 条（含 ECC 的行从 89 升到 151）、追加到 `DDR4 ECC` 190 条、再到 `DDR4 ECC RDIMM` 只剩 70 条。**不追加形态词**（RDIMM/UDIMM/LRDIMM，「浪潮 NF5280M5 服务器内存 ECC」41 条 → 加 RDIMM 后 0 条）；**也不追加代际**（DDR4/DDR5）。形态与代际交给 spec_match 标注。",
+      "规格只用于给每行结果标注 spec_match（match/conflict/unknown），**绝不用于过滤**：同批结果里 RDIMM 与 UDIMM 共现，2.5寸/3.5寸 也会共现，按规格过滤会把结果清空。",
+      "关键词必须能在上游活下来：本表每条都用 sourceType=0 请求 2 轮取小值验证过（最低 2 条，「戴尔 OptiPlex 7080 固态硬盘」）。被「HPE 前缀」「M.2 NVMe 固态硬盘」「台式机/笔记本」限定词这类过度约束写死为 0 条的词已全部替换。",
+      "召回个位数（2–4 条）的词**不改成通用规格词**：把「戴尔 Precision 3660 内存」换成「DDR5 工作站内存」能到 29 条，但含机型的一件都没有。配件推荐的价值在于「这件东西适配你这台机器」，通用词换来的是无法核对的列表，所以宁可少而准。"
+    ]
   },
 
   "R750": {
@@ -18,10 +27,10 @@
     "memory_spec": "DDR4 ECC RDIMM 3200MHz（32G/64G/128G）",
     "storage_spec": "2.5 寸 SAS/SATA/NVMe 热插拔硬盘 + 后置 BOSS 卡",
     "accessory_keywords": [
-      "戴尔 R750 服务器内存 DDR4 ECC 32G",
-      "戴尔 PowerEdge 2.5寸 SAS 硬盘 服务器",
+      "戴尔 R750 服务器内存",
       "戴尔 R750 硬盘托架 2.5寸",
-      "戴尔 R750 电源模块 800W"
+      "戴尔 R750 服务器电源 热插拔",
+      "戴尔 R750 导轨"
     ],
     "aliases": ["R750", "PowerEdge R750", "R750xs"],
     "notes": "内存必须 ECC RDIMM，普通台式机内存不可用；硬盘需配原厂托架"
@@ -32,9 +41,9 @@
     "memory_spec": "DDR4 ECC RDIMM 2666/2933MHz",
     "storage_spec": "2.5 寸 SAS/SATA 硬盘 + NDC 网卡",
     "accessory_keywords": [
-      "戴尔 R740 服务器内存 DDR4 ECC 32G",
+      "戴尔 R740 服务器内存",
       "戴尔 R740 硬盘托架 2.5寸",
-      "戴尔 R740 电源 750W 热插拔",
+      "戴尔 R740 服务器电源 热插拔",
       "戴尔 R740 导轨"
     ],
     "aliases": ["R740", "PowerEdge R740", "R740xd"],
@@ -46,9 +55,10 @@
     "memory_spec": "DDR4 ECC RDIMM 2133/2400MHz",
     "storage_spec": "2.5 寸 SAS/SATA 硬盘",
     "accessory_keywords": [
-      "戴尔 R730 服务器内存 DDR4 ECC 16G",
+      "戴尔 R730 服务器内存",
       "戴尔 R730 硬盘托架 2.5寸",
-      "戴尔 R730 电源 750W"
+      "戴尔 R730 服务器电源 热插拔",
+      "戴尔 R730 导轨"
     ],
     "aliases": ["R730", "R730xd"],
     "notes": "存量机型，二手配件市场活跃，注意质保与检测报告"
@@ -59,9 +69,9 @@
     "memory_spec": "DDR4 ECC RDIMM 2933MHz",
     "storage_spec": "2.5 寸 SAS/SATA/NVMe 硬盘",
     "accessory_keywords": [
-      "HPE DL380 Gen10 服务器内存 DDR4 ECC 32G",
-      "HPE DL380 Gen10 硬盘托架 2.5寸",
-      "HPE Gen10 电源 800W 热插拔"
+      "DL380 Gen10 服务器内存",
+      "DL380 Gen10 硬盘托架 2.5寸",
+      "HPE Gen10 服务器电源 热插拔"
     ],
     "aliases": ["DL380", "DL380 Gen10", "DL380G10"],
     "notes": "HPE 智能内存对第三方兼容性敏感，建议使用 HPE 认证内存"
@@ -72,9 +82,9 @@
     "memory_spec": "DDR4 ECC RDIMM 2933MHz",
     "storage_spec": "2.5 寸 SAS/SATA 硬盘",
     "accessory_keywords": [
-      "HPE DL388 Gen10 内存 DDR4 ECC 32G",
-      "HPE DL388 Gen10 硬盘托架",
-      "HPE DL388 电源 500W"
+      "DL388 Gen10 服务器内存",
+      "DL388 Gen10 硬盘托架 2.5寸",
+      "HPE DL388 Gen10 电源模块 热插拔"
     ],
     "aliases": ["DL388", "DL388 Gen10", "DL388G10"],
     "notes": "国内常见型号，与 DL380 配件部分通用但托架需核对"
@@ -85,9 +95,9 @@
     "memory_spec": "DDR4 ECC RDIMM 2666/2933MHz",
     "storage_spec": "2.5 寸 SAS/SATA/NVMe 硬盘",
     "accessory_keywords": [
-      "浪潮 NF5280M5 服务器内存 DDR4 ECC 32G",
+      "浪潮 NF5280M5 服务器内存",
       "浪潮 NF5280M5 硬盘托架 2.5寸",
-      "浪潮 NF5280M5 电源 550W"
+      "浪潮 NF5280M5 服务器电源 模块"
     ],
     "aliases": ["NF5280M5", "NF5280", "5280M5"],
     "notes": "浪潮内存兼容性偏严，建议同步报价浪潮原厂内存条"
@@ -98,9 +108,9 @@
     "memory_spec": "DDR4 ECC RDIMM 2666MHz",
     "storage_spec": "3.5 寸 SATA/SAS 硬盘",
     "accessory_keywords": [
-      "浪潮 NF5270M5 内存 DDR4 ECC",
+      "浪潮 NF5270M5 服务器内存",
       "浪潮 NF5270M5 硬盘托架 3.5寸",
-      "浪潮 NF5270M5 电源"
+      "浪潮 NF5270M5 服务器电源 模块"
     ],
     "aliases": ["NF5270M5", "NF5270", "5270M5"],
     "notes": "3.5 寸盘位机型，适合大容量存储场景"
@@ -111,9 +121,9 @@
     "memory_spec": "DDR4 ECC RDIMM 2666/2933MHz",
     "storage_spec": "2.5 寸 SAS/SATA/NVMe 硬盘",
     "accessory_keywords": [
-      "联想 SR650 服务器内存 DDR4 ECC 32G",
+      "联想 SR650 服务器内存",
       "联想 SR650 硬盘托架 2.5寸",
-      "联想 SR650 电源 750W"
+      "联想 SR650 服务器电源 模块"
     ],
     "aliases": ["SR650", "ThinkSystem SR650", "SR658"],
     "notes": "联想服务器内存有白名单机制，第三方内存可能报警告"
@@ -124,10 +134,10 @@
     "memory_spec": "DDR4 2666/3200 SO-DIMM 笔记本内存条",
     "storage_spec": "M.2 2280 NVMe SSD（PCIe 3.0）+ 2.5 寸 SATA 位",
     "accessory_keywords": [
-      "DDR4 笔记本内存 16G 3200",
-      "M.2 NVMe SSD 1TB PCIe3.0",
+      "联想 M730q 内存",
+      "联想 M730q M.2 硬盘",
       "联想 M730q 电源适配器 90W",
-      "联想 Tiny 机型 显示器支架"
+      "联想 Tiny 主机 VESA 支架"
     ],
     "aliases": ["M730q", "ThinkCentre M730q", "M720q", "M920q", "M75q"],
     "notes": "1L 微型机，仅支持 SO-DIMM 低电压内存与单面 M.2"
@@ -138,8 +148,8 @@
     "memory_spec": "DDR4 2666 UDIMM 台式机内存条",
     "storage_spec": "M.2 NVMe SSD + 3.5 寸 SATA 硬盘位",
     "accessory_keywords": [
-      "DDR4 台式机内存 16G 2666",
-      "M.2 NVMe SSD 512G",
+      "联想 M720t 内存",
+      "联想 M720t 固态硬盘",
       "3.5寸 机械硬盘 4TB"
     ],
     "aliases": ["M720t", "M720s", "M920t", "ThinkCentre M720"],
@@ -151,9 +161,9 @@
     "memory_spec": "DDR4 2666/2933 UDIMM 台式机内存条",
     "storage_spec": "M.2 2280 NVMe SSD + 2.5/3.5 寸 SATA 位",
     "accessory_keywords": [
-      "戴尔 OptiPlex 7080 内存 DDR4 16G",
-      "M.2 NVMe SSD 1TB",
-      "戴尔 OptiPlex 电源 200W"
+      "戴尔 OptiPlex 7080 内存",
+      "戴尔 OptiPlex 7080 固态硬盘",
+      "戴尔 OptiPlex 7080 电源 200W"
     ],
     "aliases": ["OptiPlex 7080", "7080MT", "7080SFF", "7080MFF", "OptiPlex 7090"],
     "notes": "MT/SFF/MFF 三种机箱，MFF 只能装 M.2 和 2.5 寸盘"
@@ -164,8 +174,8 @@
     "memory_spec": "DDR5 4800 UDIMM（支持 ECC）",
     "storage_spec": "M.2 NVMe SSD + 3.5 寸 SATA 位",
     "accessory_keywords": [
-      "DDR5 台式机内存 32G 4800",
-      "M.2 NVMe SSD 2TB PCIe4.0",
+      "戴尔 Precision 3660 内存",
+      "戴尔 Precision 3660 SSD",
       "戴尔 Precision 3660 电源 500W"
     ],
     "aliases": ["Precision 3660", "Precision 3650", "P3660"],
@@ -177,8 +187,8 @@
     "memory_spec": "DDR4 3200 SO-DIMM 笔记本内存条（部分板载）",
     "storage_spec": "M.2 2280 NVMe SSD",
     "accessory_keywords": [
-      "DDR4 3200 笔记本内存 16G",
-      "M.2 NVMe SSD 1TB",
+      "ThinkPad E14 笔记本内存",
+      "ThinkPad E14 固态硬盘",
       "ThinkPad E14 电源适配器 65W Type-C",
       "ThinkPad 扩展坞 Type-C"
     ],
@@ -245,7 +255,7 @@
     "storage_spec": "不适用",
     "accessory_keywords": [
       "监控专用硬盘 4TB 紫盘",
-      "PoE 交换机 8口",
+      "PoE 供电交换机 8口",
       "监控摄像头支架 壁装"
     ],
     "aliases": ["DS-2CD3T46", "海康 400万 摄像头", "DS-2CD3T56"],

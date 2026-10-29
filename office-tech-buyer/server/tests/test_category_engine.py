@@ -7,6 +7,7 @@
 from __future__ import annotations
 
 import json
+import re
 from contextlib import contextmanager
 from dataclasses import replace
 from pathlib import Path
@@ -108,13 +109,92 @@ class TestMatching:
 
     def test_related_queries_by_table(self) -> None:
         consumable = engine.build_match("惠普 M126a")
-        assert [r.kind for r in consumable.related] == ["original", "compatible"]
+        assert consumable.related
+        assert all(r.kind == "consumable" for r in consumable.related)
+        # label 就是该耗材的型号关键词，宿主 AI 靠它把「粉盒」「硒鼓」分开渲染
+        assert all(r.label == r.keyword for r in consumable.related)
 
         hardware = engine.build_match("戴尔 PowerEdge R750")
         assert hardware.related and all(r.kind == "accessory" for r in hardware.related)
 
         paper = engine.build_match("A4 复印纸 70g")
         assert paper.related and all(r.kind == "variant" for r in paper.related)
+
+    def test_drum_and_toner_are_separate_queries(self) -> None:
+        """鼓粉分离的机型必须为粉盒与硒鼓各出一条查询。
+
+        DCP-7180DN 的 model_code 是「TN-2325 / DR-2350」，旧表只搜了粉盒，
+        硒鼓 DR-2350 从未进入比价；而实测两者差一个价位档（各 3 轮中位价：
+        粉盒 ¥32.4/¥90.0/¥35.9，硒鼓 ¥82.1/¥92.5/¥87.5），漏掉的是更贵的那一半。
+        """
+        related = engine.build_match("兄弟 DCP-7180DN").related
+        keywords = [r.keyword for r in related]
+
+        assert "兄弟 TN-2325 粉盒" in keywords
+        assert "兄弟 DR-2350 硒鼓" in keywords
+
+    def test_consumable_keywords_drop_original_compatible_suffixes(self) -> None:
+        """关键词不带「原装/适用」后缀——上游不按这两个词筛选。
+
+        实测「惠普 88A 碳粉盒 原装」上游 52 条里 oem_likely 只有 2 条
+        （¥529/¥1009），compatible 47 条（最低 ¥5.0、中位 ¥28.0），等于白占
+        一条 max_related_queries 配额。供应类型改由每行结果的 attributes 判定。
+        """
+        for keyword in ("惠普 M126a", "兄弟 DCP-7180DN", "联想 M7605D"):
+            for related in engine.build_match(keyword).related:
+                assert "原装" not in related.keyword, related.keyword
+                assert "适用" not in related.keyword, related.keyword
+
+    def test_hardware_memory_keyword_appends_ecc_only_after_noun(self) -> None:
+        """内存配件只追加 `ECC`，且一律追加在类别词之后。
+
+        8 台服务器 2 轮实测（sourceType=0，取小值）：不追加后缀合计 260 条，
+        只追加 `ECC` 246 条（含 ECC 的行从 89 升到 151），追加到 `DDR4 ECC` 190 条，
+        再到 `DDR4 ECC RDIMM` 只有 70 条（「浪潮 NF5280M5 服务器内存 ECC」41→0、
+        「联想 SR650 …」40→1）。代际与形态同理，只做 spec_match 标注。
+        """
+        related = engine.build_match("戴尔 PowerEdge R750").related
+        memory = next(r for r in related if "内存" in r.keyword)
+
+        assert memory.keyword == "戴尔 R750 服务器内存 ECC"
+        # 形态词与代际不追加，交给 spec_match 逐行标注
+        for token in ("RDIMM", "UDIMM", "LRDIMM", "DDR4", "DDR5"):
+            assert token not in memory.keyword
+        # 容量与频率由用户需求决定，不得写进关键词
+        assert not re.search(r"\d+\s*G\b", memory.keyword)
+        assert "3200MHz" not in memory.keyword
+
+    def test_ecc_is_appended_to_servers_only(self) -> None:
+        """台式机/笔记本内存不追加 ECC——它们不是必须 ECC，且召回基数本来就小。"""
+        for keyword, memory_keyword in (
+            ("联想 ThinkCentre M730q", "联想 M730q 内存"),
+            ("联想 ThinkCentre M720t", "联想 M720t 内存"),
+            ("戴尔 Precision 3660", "戴尔 Precision 3660 内存"),
+        ):
+            related = engine.build_match(keyword).related
+            memory = next(r for r in related if "内存" in r.keyword)
+            assert memory.keyword == memory_keyword, keyword
+
+    def test_hardware_specs_are_not_appended_outside_memory(self) -> None:
+        """盘位类的规格直接写在关键词里，不自动追加（自动追加会收窄召回）。"""
+        related = engine.build_match("戴尔 PowerEdge R750").related
+        caddy = next(r for r in related if "托架" in r.keyword)
+
+        assert caddy.keyword == "戴尔 R750 硬盘托架 2.5寸"
+
+    def test_short_alias_substring_needs_word_boundary(self) -> None:
+        """「T27」是「deskjet2720」的子串，短别名不得在整机串里碰运气。
+
+        曾因此把 ThinkVision T24 显示器及其配件当成 DeskJet 2720 的耗材返回，
+        且 matched=true 让宿主 AI 不走兜底，直接报错耗材。
+        """
+        assert engine.build_match("惠普 DeskJet 2720").matched is False
+
+        # 同一个别名带词边界时仍要命中，别把正常匹配一起修没了
+        assert engine.build_match("T27 显示器").match_key == "ThinkVision T24"
+        assert engine.build_match("T23 显示器").match_key == "ThinkVision T24"
+        assert engine.build_match("E15 笔记本").match_key == "ThinkPad E14"
+        assert engine.build_match("24/6 订书钉").match_key == "staples"
 
     def test_plan_puts_primary_first_and_honours_limit(self) -> None:
         match = engine.build_match("戴尔 PowerEdge R750")

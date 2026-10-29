@@ -177,8 +177,26 @@ class Settings:
     max_related_queries: int = field(
         default_factory=lambda: _int("OFFICE_BUYER_MAX_RELATED_QUERIES", 2)
     )
+    #: 单条查询保留的商品数上限。
+    #:
+    #: 上游把多渠道结果按相关度**交错**返回（不是按渠道分段），截断因此是按渠道
+    #: 偏斜的——同样的行数，砍前 20 条会让某一个渠道几乎清零。实测（sourceType=0）：
+    #:
+    #: ==================  ================  ==============  ==============
+    #: 关键词              上游（按渠道）    limit=20        limit=40
+    #: ==================  ================  ==============  ==============
+    #: 戴尔 PowerEdge R750  {1:18, 2:20}     {1:18, 2:2}     {1:18, 2:20}
+    #: 兄弟 DCP-7180DN      {1:18, 3:18,      {1:9, 3:10,     {1:17, 3:13,
+    #:                      2:20}             2:1}            2:10}
+    #: 惠普 M126a 碳粉盒     {1:17, 3:20,      {1:11, 3:9}     {1:15, 3:15,
+    #:                      2:20}                             2:10}
+    #: ==================  ================  ==============  ==============
+    #:
+    #: 被清零的渠道每轮不同（京东/天猫都出现过），但「limit=20 时必有一个渠道
+    #: 只剩个位数」稳定成立；40 能让所有渠道恢复。40 是实测能覆盖绝大多数关键词
+    #: 完整一轮的值（上游单查询上限约 60）。
     max_items_per_query: int = field(
-        default_factory=lambda: _int("OFFICE_BUYER_MAX_ITEMS_PER_QUERY", 20)
+        default_factory=lambda: _int("OFFICE_BUYER_MAX_ITEMS_PER_QUERY", 40)
     )
     default_packs_per_box: int = field(
         default_factory=lambda: _int("OFFICE_BUYER_DEFAULT_PACKS_PER_BOX", 5)

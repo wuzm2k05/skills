@@ -33,6 +33,17 @@ COMPATIBLE_SIGNALS = (
     "适用", "兼容", "通用", "代用", "国产", "第三方", "适配", "可替代", "平替",
 )
 
+#: 正式原厂前缀：厂商中文名 + 括号英文名的写法，如「惠普(HP)」「联想(Lenovo)」。
+#: 只写「原装」二字的不算——电商标题里兼容品也大量这么写。用于 ``_supply_tier``。
+OEM_PREFIXES = (
+    "惠普(HP", "惠普（HP", "HP(", "联想(LENOVO", "联想（LENOVO", "LENOVO(",
+    "兄弟(BROTHER", "兄弟（BROTHER", "BROTHER(", "佳能(CANON", "佳能（CANON",
+    "CANON(", "爱普生(EPSON", "爱普生（EPSON", "EPSON(", "奔图(PANTUM",
+    "奔图（PANTUM", "PANTUM(", "京瓷(KYOCERA", "京瓷（KYOCERA", "KYOCERA(",
+    "戴尔(DELL", "戴尔（DELL", "DELL(", "理光(RICOH", "理光（RICOH",
+    "RICOH(", "得力(DELI", "得力（DELI", "DELI(",
+)
+
 #: 品牌词库（用于标题解析与兜底）
 BRANDS = (
     "惠普", "HP", "爱普生", "Epson", "佳能", "Canon", "兄弟", "Brother",
@@ -60,8 +71,21 @@ SINGLE_PACK_RE = re.compile(r"(单包|一包|1包|单包装|每包)")
 BOX_RE = re.compile(r"(整箱|箱装|一整箱|/\s*箱|每箱|一箱)")
 #: 张数统计（「500张」「2500页」）
 SHEET_COUNT_RE = re.compile(r"(\d{2,5})\s*(?:张|页|枚|片)")
-#: 耗材型号：字母+数字组合，如 CC388A / PD-201 / TN-2325
-MODEL_RE = re.compile(r"\b([A-Z]{1,4}[-]?\d{2,5}[A-Z]{0,2})\b")
+#: 耗材型号：字母+数字组合，如 CC388A / PD-201 / TN-2325 / 88A。
+#:
+#: 不能使用 ``\b``：``\b`` 的边界定义是「词字符与非词字符之间」，而汉字在 Python
+#: 的 re 里算词字符，所以「适用惠普CC388A碳粉」中 CC388A 左右都是词字符，``\b``
+#: 不成立，整条正则匹配不到。实测该查询下 56 条商品里 17 条标题含 CC388A，
+#: 旧写法只解析出 8 条——而 ``attributes.model_code`` 正是 answer-rules 让宿主 AI
+#: 信任的型号来源。改用「右侧不是字母数字」的前瞻代替 ``\b``，汉字相邻即可命中。
+#:
+#: 第二分支 ``\d{2,3}[A-Z]{1,2}`` 覆盖「88A」「28A」这类以数字开头的短型号
+#: （惠普按印量编号的碳粉盒），并要求右侧同样不是字母数字，避免把
+#: 「24/6 订书钉」「DeskJet 2720」这类误判成型号。
+MODEL_RE = re.compile(
+    r"([A-Z]{1,4}-?\d{2,5}[A-Za-z]{0,2}(?![A-Za-z0-9])"
+    r"|\d{2,3}[A-Z]{1,2}(?![A-Za-z0-9]))"
+)
 
 #: 换算策略 → 该品类的天然比价单位
 UNIT_NAMES = {
@@ -70,6 +94,140 @@ UNIT_NAMES = {
     "calculate_per_label_price": "张",
     "calculate_per_piece_price": "个",
 }
+
+# --------------------------------------------------------------------------- #
+# 硬件规格 token（只用于「标注」，绝不用于「过滤」）
+# --------------------------------------------------------------------------- #
+#: 从 memory_spec / storage_spec 里抽出的可核对规格 token。
+#: 刻意不抽容量（32G/64G/128G）：容量由用户需求决定，写进关键词反而把召回砍半
+#: （实测「戴尔 R750 服务器内存 DDR4 ECC 32G」n=11，「…ECC」n=20）。
+SPEC_TOKEN_RE = re.compile(
+    r"(DDR[45]|LRDIMM|RDIMM|UDIMM|SO-?DIMM|ECC"
+    r"|\d{3,4}\s*MHz"
+    r"|[23]\.5\s*寸|M\.2|NVMe|SAS|SATA|PCIe\s*[345]\.0)",
+    re.IGNORECASE,
+)
+
+#: 互斥规格族：同族内取值不同即为「冲突」。
+#: 服务器内存实测 RDIMM 与 UDIMM 会在同一批结果里共现（「戴尔 R750 服务器内存
+#: DDR4 ECC」20 条里 RDIMM 4 条、UDIMM 亦有），2.5 寸与 3.5 寸也共现（6/6）——
+#: 所以任何按规格的**过滤**都会清空结果，只能标注冲突交给用户判断。
+SPEC_FAMILIES: tuple[tuple[str, ...], ...] = (
+    ("DDR4", "DDR5"),
+    ("RDIMM", "UDIMM", "LRDIMM", "SODIMM"),
+    ("2.5寸", "3.5寸"),
+    ("SAS", "NVMe"),
+)
+
+
+def _norm_spec_token(token: str) -> str:
+    """规格 token 归一化：去空格、大写，便于与标题比对。"""
+    return re.sub(r"\s+", "", token).upper()
+
+
+def spec_tokens_of(record: dict[str, Any]) -> list[str]:
+    """由 memory_spec / storage_spec 文本抽取去重后的规格 token（保序）。
+
+    这些 token 用于**标注**每行商品是否与设备规格相符（``spec_match``），
+    因此保留频率（3200MHz）——它是核对点之一。
+    """
+    text = f"{record.get('memory_spec') or ''} {record.get('storage_spec') or ''}"
+    seen: dict[str, None] = {}
+    for hit in SPEC_TOKEN_RE.finditer(text):
+        seen.setdefault(_norm_spec_token(hit.group(1)), None)
+    return list(seen)
+
+
+#: 写进关键词的规格 token 白名单——**只覆盖服务器内存，且只追加 `ECC` 一项**。
+#:
+#: 每一类被排除的 token 都有实测依据（8 台服务器 × 2 轮，sourceType=0 取小值）。
+#: 同一批 base，逐级追加后缀后的合计条数：
+#:
+#: =================  ======
+#: 追加的后缀          合计
+#: =================  ======
+#: （不追加）           260
+#: `ECC`               246
+#: `DDR4 ECC`          190
+#: `DDR4 ECC RDIMM`     70
+#: =================  ======
+#:
+#: - **形态词（RDIMM / UDIMM / LRDIMM / SO-DIMM）一律不追加**。上游把关键词当成
+#:   精确筛选，加上去就归零：「浪潮 NF5280M5 服务器内存 ECC」41 条 → 加 RDIMM 后
+#:   **0 条**、「DL380 Gen10 服务器内存 ECC」21 → 1、「联想 SR650 …」40 → 1。
+#:   八台合计从 246 掉到 70。形态差异改由每行结果的 ``attributes.spec_match``
+#:   标注（要 RDIMM 却写 UDIMM 会标 `conflict`），不做筛选。
+#: - **代际（DDR4/DDR5）不追加**：加了同样压低召回（246 → 190，
+#:   「浪潮 NF5280M5 … ECC」41 → 26、「联想 SR650 …」40 → 22），代际交给
+#:   `spec_match` 标注。
+#: - **频率（3200MHz）与容量（32G）不追加**：它们是用户按需挑的，写死等于替用户决定
+#:   （「戴尔 R750 服务器内存」40 条 → 加 `32G` 25 条 → 加 `DDR4 ECC 32G` 14 条；
+#:   加 `ECC RDIMM 3200MHz` 为 0 条）。
+#: - **只对 ``category == "服务器"`` 追加**：服务器内存**必须** ECC，这是硬约束；
+#:   台式机/笔记本/工作站（memory_spec 里可能写着「支持 ECC」）不是，且它们的召回基数
+#:   本来就小（「联想 M730q 内存」5 条），再追加就归零了。
+#:
+#: `ECC` 本身**不是**净收益，而是召回与精度的交换：八台合计 260 条 → 246 条（−5%），
+#: 但含 ECC 的行从 89 条升到 151 条（+70%）。服务器内存里挑错代际/形态的代价远小于
+#: 挑到非 ECC 内存条，所以这笔交换划算。
+#:
+#: 盘位规格（2.5寸/3.5寸/SAS/NVMe）不自动追加，直接写在 ``accessory_keywords`` 里——
+#: 不同盘位的托架物理上不通用：实测「戴尔 R750 硬盘托架 2.5寸」23 条（几乎全对口），
+#: 去掉盘位是 54 条但混入大量 3.5 寸与其它机型。
+KEYWORD_SPEC_RE = re.compile(r"ECC", re.IGNORECASE)
+
+
+def keyword_spec_tokens(base: str, record: dict[str, Any]) -> list[str]:
+    """按配件类别词挑出应当追加到关键词后的规格 token（去重、不与 base 重复）。
+
+    只有服务器内存会拿到 ``["ECC"]``，其余一律返回空列表；被排除的 token 及理由
+    见 ``KEYWORD_SPEC_RE`` 上方的注释。
+    """
+    if "内存" not in base:
+        return []
+    if str(record.get("category") or "").strip() != "服务器":
+        return []
+    source = record.get("memory_spec") or ""
+    if "ECC" not in source.upper():
+        return []
+    existing = _norm_spec_token(base)
+    tokens: list[str] = []
+    for hit in KEYWORD_SPEC_RE.finditer(source):
+        token = _norm_spec_token(hit.group(0))
+        if token not in existing and token not in tokens:
+            tokens.append(token)
+    return tokens
+
+
+def spec_match_of(title: str, want: list[str]) -> dict[str, Any]:
+    """判断标题与设备规格的相符程度，**只标注不筛选**。
+
+    返回 ``verdict`` 取 ``match`` / ``conflict`` / ``unknown``：
+
+    - ``unknown``：设备本身无规格 token（显示器、网络设备），或标题未出现任何规格词。
+    - ``conflict``：标题出现了同族的另一个取值（要 RDIMM 却写 UDIMM、要 DDR4 却写 DDR5、
+      要 2.5 寸却写 3.5 寸）。这类商品**不剔除**——上游同批结果本来就混着两种规格，
+      剔除会把结果清空；由 answer-rules 要求宿主 AI 提示用户核对。
+    - ``match``：标题命中了至少一个所需 token，且无同族冲突。
+    """
+    if not want:
+        return {"verdict": "unknown", "matched": [], "conflicts": []}
+    squashed = _norm_spec_token(title)
+    matched = [t for t in want if t in squashed]
+    conflicts: list[str] = []
+    for family in SPEC_FAMILIES:
+        if not any(t in want for t in family):
+            continue
+        hit = [t for t in family if t in squashed]
+        if hit and not any(t in matched for t in hit):
+            conflicts.append(hit[0])
+    if conflicts:
+        verdict = "conflict"
+    elif matched:
+        verdict = "match"
+    else:
+        verdict = "unknown"
+    return {"verdict": verdict, "matched": matched, "conflicts": conflicts}
 
 
 # --------------------------------------------------------------------------- #
@@ -152,6 +310,23 @@ def normalize_keyword(keyword: str) -> str:
 def _squash(text: str) -> str:
     """去掉所有分隔符与空格，仅保留字母数字与汉字，用于宽松比对。"""
     return re.sub(r"[^0-9a-zA-Z一-鿿]", "", text).lower()
+
+
+def _alias_in_keyword(alias: str, normalized: str) -> bool:
+    """短别名（squash 后不足 4 字符）需以非字母数字为界出现在关键词里。
+
+    「T27」是「惠普deskjet2720」的子串，纯子串匹配会把 ThinkVision T24 显示器的
+    配件当成 DeskJet 2720 的耗材带回去。加长度下限也能挡住这一例，但会一并停用
+    「24/6」「E15」「T27」这些长度恰为 3 的正常别名，所以改成看边界：左右任一侧
+    是串首/串尾或非字母数字字符即算命中。
+    """
+    for match in re.finditer(re.escape(alias.strip()), normalized, re.IGNORECASE):
+        start, end = match.start(), match.end()
+        left_ok = start == 0 or not normalized[start - 1].isalnum()
+        right_ok = end == len(normalized) or not normalized[end].isalnum()
+        if left_ok or right_ok:
+            return True
+    return False
 
 
 # --------------------------------------------------------------------------- #
@@ -237,7 +412,14 @@ class MappingTables:
                         continue
                     if squash == alias_squash:
                         return table_name, key, "alias_exact", record
-                    if alias_squash in squash:
+                    # 长别名沿用宽松子串；短别名必须带词边界，否则「T27」会被
+                    # 「deskjet2720」整串吞进去
+                    hit = (
+                        alias_squash in squash
+                        if len(alias_squash) >= 4
+                        else _alias_in_keyword(str(alias), normalized)
+                    )
+                    if hit:
                         return table_name, key, "alias_substring", record
 
         # 第三轮：模糊包含（关键词被切碎时兜底，例如「惠普的M126a打印机多少钱」）
@@ -290,35 +472,81 @@ TABLES = MappingTables()
 # 查询计划构建
 # --------------------------------------------------------------------------- #
 def _build_related_from_consumables(record: dict[str, Any]) -> list[RelatedQuery]:
+    """把设备对应的耗材型号逐条转成查询。
+
+    一条 ``model_keywords`` = 一种需要**单独比价**的耗材。鼓粉分离的机型（如
+    DCP-7180DN 的 TN-2325 粉盒 + DR-2350 硒鼓）因此得到两条查询——旧表把两个
+    型号塞进一个 ``model_code`` 字段（``"TN-2325 / DR-2350"``），硒鼓 DR-2350
+    从来没被搜过。实测两者差一个价位档（各 3 轮中位价：粉盒 ¥32.4 / ¥90.0 /
+    ¥35.9，硒鼓 ¥82.1 / ¥92.5 / ¥87.5），漏掉的正是更贵的那一半。
+
+    关键词**不带**「原装 / 适用」后缀：上游对这两个词不做筛选。实测
+    「惠普 88A 碳粉盒 原装」上游 52 条里 ``oem_likely`` 只有 2 条（¥529 / ¥1009），
+    ``compatible`` 47 条（最低 ¥5.0、中位 ¥28.0）；「联想 LT2451 粉盒 原装」
+    48 条里 ``oem_likely`` 4 条（¥279–365）、``compatible`` 28 条（¥12.6 起）。
+    后缀白占一条 ``max_related_queries`` 配额，供应类型由结果行的
+    ``attributes.supply_tier`` 判定，与查询词无关。
+    """
     related: list[RelatedQuery] = []
-    original = record.get("original_keyword")
-    compatible = record.get("compatible_keyword")
-    if original:
-        related.append(
-            RelatedQuery(keyword=original, kind="original", label="原装耗材")
-        )
-    if compatible:
-        related.append(
-            RelatedQuery(keyword=compatible, kind="compatible", label="第三方兼容耗材")
-        )
+    for kw in record.get("model_keywords") or []:
+        keyword = str(kw).strip()
+        if keyword:
+            related.append(
+                RelatedQuery(keyword=keyword, kind="consumable", label=keyword)
+            )
     return related
 
 
 def _build_related_from_hardware(record: dict[str, Any]) -> list[RelatedQuery]:
+    """把设备对应的扩展配件转成查询，规格 token 一律**后置**且不含容量/频率。
+
+    词序是上游的硬约束：``{设备} {类别词} {规格...}``。实测规格排在类别词**之后**
+    才有结果：「戴尔 R750 服务器内存 ECC RDIMM」21 条，改写成「戴尔 R750 ECC RDIMM
+    服务器内存」只剩 1 条（sourceType=2 上为 0）。
+
+    配件词里的规格由 ``keyword_spec_tokens`` 从 ``memory_spec`` 派生，只追加
+    ``ECC`` 一项且仅限服务器内存；形态词（RDIMM/UDIMM）、代际、频率与容量的取舍
+    见 ``KEYWORD_SPEC_RE`` 上方的注释。
+    """
     related: list[RelatedQuery] = []
     for kw in record.get("accessory_keywords") or []:
-        related.append(
-            RelatedQuery(keyword=str(kw), kind="accessory", label="扩展配件")
-        )
+        base = str(kw).strip()
+        if not base:
+            continue
+        tokens = keyword_spec_tokens(base, record)
+        keyword = " ".join([base, *tokens]) if tokens else base
+        related.append(RelatedQuery(keyword=keyword, kind="accessory", label=keyword))
     return related
 
 
 def _build_related_from_paper(record: dict[str, Any]) -> list[RelatedQuery]:
+    """把纸品的包装规格变体转成查询。
+
+    这些变体查询有实测的增益：上游单条查询**按相关度排序**，整箱款与单包款的比例
+    因查询词而异。每词 2 轮并集实测（含箱 / 含单包 的标题数）：
+
+    ====================  =======  ======  ========
+    查询                   并集条数   含箱    含单包
+    ====================  =======  ======  ========
+    A4 复印纸 70g            67       38      26
+    A4 复印纸 70g 单包        60       36      51
+    A4 复印纸 70g 5包箱装      26       22       3
+    ====================  =======  ======  ========
+
+    三条并起来 133 条（含箱 81 / 含单包 67），单包与整箱两种价格都有——宿主 AI
+    需要这两种价格才能按折合单价横比，所以这两条查询保留。
+
+    注意：上游对同一关键词的两次请求结果**大多数时候很稳**（7 个关键词 × 3 组
+    实测 Jaccard 0.72–1.0，多数在 0.9 以上），但也出现过整批换一批的低谷，
+    所以「这条查询有没有用」的判断仍应靠多轮并集而非单轮对比。
+    """
     related: list[RelatedQuery] = []
     for kw in record.get("keywords") or []:
-        related.append(
-            RelatedQuery(keyword=str(kw), kind="variant", label="包装规格变体")
-        )
+        keyword = str(kw).strip()
+        if keyword:
+            related.append(
+                RelatedQuery(keyword=keyword, kind="variant", label="包装规格变体")
+            )
     return related
 
 
@@ -364,12 +592,17 @@ def build_match(keyword: str) -> MatchResult:
         result.attributes = {
             "consumable_type": record.get("consumable_type"),
             "model_code": record.get("model_code"),
+            # 每条关联查询对应的耗材型号，供 answer-rules 在「配套耗材」区块里
+            # 标明这一行是粉盒还是硒鼓，而不是笼统写「耗材」。
+            "model_keywords": list(record.get("model_keywords") or []),
         }
     elif table_name == "server_hardware":
         result.related = _build_related_from_hardware(record)
         result.attributes = {
             "memory_spec": record.get("memory_spec"),
             "storage_spec": record.get("storage_spec"),
+            # 供 enrich_item() 给每条商品标注规格相符度（只标注，不筛选）
+            "spec_tokens": spec_tokens_of(record),
         }
     else:  # paper_spec
         result.related = _build_related_from_paper(record)
@@ -626,7 +859,47 @@ def parse_attributes(title: str) -> dict[str, Any]:
     model = MODEL_RE.search(text)
     if model:
         attrs["model_code"] = model.group(1)
+
+    # 6. 供应层级（旁路字段，**不取代** supply_type）
+    #
+    #    supply_type 只是「标题里出现了哪类词」的文本信号，会把 ¥43.9 的得力
+    #    兼容品和 ¥51.3 的再生品标成「原装」——因为它们的标题里确实写了「原装」。
+    #    真正的原装 CC388A 售价在 ¥300~1000。这里再给一层更保守的判断，并**只标注
+    #    不重分类**：supply_type 的四个取值是 answer-rules 与测试依赖的契约，
+    #    改它会连带改掉渲染规则；而 supply_tier 是新增旁路，宿主 AI 可用来提示
+    #    「该行标称原装但价格显著低于同批原装，请核对」。
+    attrs["supply_tier"] = _supply_tier(text, attrs.get("model_code"))
+    attrs["supply_tier_note"] = _SUPPLY_TIER_NOTES[attrs["supply_tier"]]
     return attrs
+
+
+#: supply_tier 取值 → 给宿主 AI 的说明
+_SUPPLY_TIER_NOTES: dict[str, str] = {
+    "oem_likely": "标题含原厂前缀（如「惠普(HP)」）且带型号，大概率为渠道原装正品",
+    "compatible": "标题含适用/兼容/通用/代用/平替等词，为第三方兼容品",
+    "unknown": "无法从标题判断供应层级，请按 supply_type 原始信号处理",
+}
+
+
+def _supply_tier(text: str, model_code: str | None) -> str:
+    """更保守的供应层级判断（``oem_likely`` / ``compatible`` / ``unknown``）。
+
+    判据故意苛刻：仅「标题里有『原装』」不足以判定原装，还要求同时具备
+    ① 一个型号代码，② 一个正式原厂前缀（``惠普(HP``、``联想(Lenovo`` 这类
+    厂商全称+括号英文名的写法）。电商标题里只写「原装」的兼容品极多，
+    加上这两条后误判显著减少，代价是漏判——漏判落回 ``unknown`` 由
+    ``supply_type`` 兜底，比误判成原装安全。
+    """
+    if any(sig in text for sig in COMPATIBLE_SIGNALS):
+        return "compatible"
+    if not model_code:
+        return "unknown"
+    if not any(sig in text for sig in ORIGINAL_SIGNALS):
+        return "unknown"
+    upper = text.upper()
+    if any(prefix.upper() in upper for prefix in OEM_PREFIXES):
+        return "oem_likely"
+    return "unknown"
 
 
 def unit_price_basis(record: dict[str, Any]) -> dict[str, Any]:
@@ -801,9 +1074,20 @@ def enrich_item(item: dict[str, Any], match: MatchResult | None) -> dict[str, An
 
     价格本身不做任何改动；``unit_price.unit_price`` 为 ``None`` 时，
     客户端只能展示 ``total_price``，不得自行倒推。
+
+    命中 server_hardware 时额外给出 ``attributes.spec_match``：把商品标题与该
+    设备的规格 token（DDR4 / ECC / RDIMM / 2.5寸…）比对，标记 ``match`` /
+    ``conflict`` / ``unknown``。**只标注、不过滤**——实测同批结果里 RDIMM 与
+    UDIMM 共现、「戴尔 R750 服务器内存 DDR4 ECC」20 条里 2.5 寸与 3.5 寸
+    6/6 共现，按规格过滤会把结果清空。
     """
     attrs = parse_attributes(item.get("title") or "")
     item = dict(item)
+
+    want_specs = (match.attributes.get("spec_tokens") or []) if match else []
+    if want_specs:
+        attrs["spec_match"] = spec_match_of(item.get("title") or "", want_specs)
+
     item["attributes"] = attrs
 
     unit_calculation = match.unit_calculation if match else None

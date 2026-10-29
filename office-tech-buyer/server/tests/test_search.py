@@ -31,7 +31,7 @@ async def test_health_reports_mapping_counts(api: httpx.AsyncClient) -> None:
 
 
 class TestMatchedSearch:
-    """映射命中：应并发带出主设备 + 原装耗材 + 兼容耗材。"""
+    """映射命中：应并发带出主设备 + 该设备的各类耗材。"""
 
     async def test_returns_primary_and_consumable_queries(self, api: httpx.AsyncClient) -> None:
         r = await api.get("/api/v1/search", params={"keyword": "惠普 M126a", "source": 0})
@@ -43,12 +43,25 @@ class TestMatchedSearch:
         assert body["match_key"] == "M126a"
 
         kinds = [q["kind"] for q in body["queries"]]
-        assert kinds == ["primary", "original", "compatible"]
+        assert kinds == ["primary", "consumable"]
 
         primary = next(q for q in body["queries"] if q["kind"] == "primary")
         assert primary["status"] == "OK"
         assert primary["count"] == 3
         assert primary["platform"] == "全部"
+
+    async def test_consumable_query_carries_its_model_label(
+        self, api: httpx.AsyncClient
+    ) -> None:
+        """每条耗材查询的 label 就是它自己的型号关键词，便于按型号分区渲染。"""
+        r = await api.get("/api/v1/search", params={"keyword": "惠普 M126a"})
+        consumable = next(q for q in r.json()["queries"] if q["kind"] == "consumable")
+
+        assert consumable["keyword"] == "惠普 88A 碳粉盒"
+        assert consumable["label"] == "惠普 88A 碳粉盒"
+        # 「原装」「适用」后缀不再出现在查询词里——上游不按这两个词筛选
+        assert "原装" not in consumable["keyword"]
+        assert "适用" not in consumable["keyword"]
 
     async def test_items_carry_platform_and_price_fields(self, api: httpx.AsyncClient) -> None:
         r = await api.get("/api/v1/search", params={"keyword": "惠普 M126a"})
@@ -63,13 +76,56 @@ class TestMatchedSearch:
     async def test_supply_type_distinguishes_original_from_compatible(
         self, api: httpx.AsyncClient
     ) -> None:
+        """同一批结果里原装与兼容并存，靠每行的 attributes 区分而非查询词。"""
         r = await api.get("/api/v1/search", params={"keyword": "惠普 M126a"})
-        queries = {q["kind"]: q for q in r.json()["queries"]}
+        consumable = next(q for q in r.json()["queries"] if q["kind"] == "consumable")
+        tiers = [i["attributes"]["supply_type"] for i in consumable["items"]]
 
-        assert queries["original"]["items"][0]["attributes"]["supply_type"] == "原装"
-        assert (
-            queries["compatible"]["items"][0]["attributes"]["supply_type"] == "第三方兼容"
-        )
+        assert "原装" in tiers
+        assert "第三方兼容" in tiers
+
+    async def test_supply_tier_flags_recycled_toner_marked_original(
+        self, api: httpx.AsyncClient
+    ) -> None:
+        """标称「原装」但带兼容信号的再生品：supply_type 照旧，supply_tier 降级。
+
+        supply_type 是 answer-rules 依赖的契约，只能如实反映标题文本；真正给
+        用户的判断走 supply_tier 旁路，避免把 ¥43.9 的兼容品当原装推荐。
+        """
+        r = await api.get("/api/v1/search", params={"keyword": "惠普 M126a"})
+        consumable = next(q for q in r.json()["queries"] if q["kind"] == "consumable")
+        by_price = {i["actualPrice"]: i["attributes"] for i in consumable["items"]}
+
+        oem = by_price[1049.0]
+        assert oem["supply_type"] == "原装"
+        assert oem["supply_tier"] == "oem_likely"
+
+        # 「惠普 88A 碳粉盒 原装 再生 得力388AXT」含「适用」类信号 → 兼容
+        recycled = by_price[999.0]
+        assert recycled["supply_tier"] == "compatible"
+
+    async def test_hardware_items_annotate_spec_match(
+        self, api: httpx.AsyncClient
+    ) -> None:
+        """服务器配件只标注规格相符度，不按规格过滤结果。"""
+        r = await api.get("/api/v1/search", params={"keyword": "戴尔 PowerEdge R750"})
+        query = next(q for q in r.json()["queries"] if q["kind"] == "accessory")
+
+        assert query["items"], "配件查询不应因规格不同被清空"
+        for item in query["items"]:
+            spec = item["attributes"]["spec_match"]
+            assert spec["verdict"] in {"match", "conflict", "unknown"}
+
+    async def test_channels_covered_reflects_actual_data_not_request(
+        self, api: httpx.AsyncClient
+    ) -> None:
+        """source=0 声称「全部」，覆盖范围必须由实际返回的数据推导。"""
+        r = await api.get("/api/v1/search", params={"keyword": "惠普 M126a", "source": 0})
+        body = r.json()
+
+        covered = {c["source"] for c in body["channels_covered"]}
+        assert covered == {1, 2, 3}
+        assert all(c["count"] > 0 for c in body["channels_covered"])
 
     async def test_hardware_match_returns_accessory_keywords(self, api: httpx.AsyncClient) -> None:
         r = await api.get("/api/v1/search", params={"keyword": "戴尔 PowerEdge R750"})
@@ -81,6 +137,25 @@ class TestMatchedSearch:
         assert all(q["kind"] == "accessory" for q in body["queries"] if q["kind"] != "primary")
         # max_related_queries 默认 2，因此最多 1 条主查询 + 2 条配件查询
         assert len(body["queries"]) == 3
+
+    async def test_accessory_keywords_put_specs_after_the_noun(
+        self, api: httpx.AsyncClient
+    ) -> None:
+        """规格 token 必须排在类别词之后，且不得写死容量/频率。
+
+        词序实测：同一批 8 台服务器 2 轮（sourceType=0 取小值），规格后置的
+        「戴尔 R750 服务器内存 ECC RDIMM」21 条，把规格挪到类别词之前的
+        「戴尔 R750 ECC RDIMM 服务器内存」只剩 1 条（sourceType=2 上为 0）。
+        容量（32G…）与频率由用户需求决定，写死会砍掉召回。
+        """
+        r = await api.get("/api/v1/search", params={"keyword": "戴尔 PowerEdge R750"})
+        keywords = [q["keyword"] for q in r.json()["queries"] if q["kind"] == "accessory"]
+
+        memory = next(k for k in keywords if "内存" in k)
+        assert memory == "戴尔 R750 服务器内存 ECC"
+        assert "32G" not in memory and "64G" not in memory and "3200MHz" not in memory
+        # 规格词一律不追加（形态/代际只做 spec_match 标注），故不含任何形态词
+        assert "RDIMM" not in memory
 
     async def test_machine_grade_items_skip_unit_price(self, api: httpx.AsyncClient) -> None:
         """整机/耗材类不存在按包折算的需求，unit_price 恒为 null。"""
@@ -243,25 +318,13 @@ class TestValidation:
 
 
 class TestOperationsEndpoints:
-    async def test_mapping_lookup_hit(self, api: httpx.AsyncClient) -> None:
+    async def test_mapping_endpoint_removed(self, api: httpx.AsyncClient) -> None:
+        """mapping 是误导来源，已下线：端点必须 404，根清单也不得再列出。"""
         r = await api.get("/api/v1/consumable/mapping", params={"device": "M126a"})
-        body = r.json()
+        assert r.status_code == 404
 
-        assert body["matched"] is True
-        assert body["device_name"] == "惠普 HP LaserJet Pro MFP M126a"
-        assert body["primary_keyword"] == "惠普 HP LaserJet Pro MFP M126a"
-        assert [x["kind"] for x in body["related"]] == ["original", "compatible"]
-
-    async def test_mapping_lookup_miss_gives_hint_and_logs(self, api: httpx.AsyncClient) -> None:
-        r = await api.get("/api/v1/consumable/mapping", params={"device": "某不存在设备XYZ"})
-        body = r.json()
-
-        assert body["matched"] is False
-        assert "hint" in body
-        assert body["related"] == []
-        assert "endpoint=/consumable/mapping" in settings.unmatched_log.read_text(
-            encoding="utf-8"
-        )
+        root = await api.get("/")
+        assert not any("consumable/mapping" in e for e in root.json()["endpoints"])
 
     async def test_unmatched_stats_aggregates_top_keywords(
         self, api: httpx.AsyncClient

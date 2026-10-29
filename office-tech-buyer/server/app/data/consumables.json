@@ -6,12 +6,16 @@
       "category": "设备品类：激光打印机 / 喷墨打印机 / 多功能一体机 / 复合机 / 针式打印机",
       "consumable_type": "耗材类型",
       "model_code": "耗材型号编码（逗号分隔多个可替换型号）",
-      "original_keyword": "原装耗材搜索关键词",
-      "compatible_keyword": "第三方兼容耗材搜索关键词",
+      "model_keywords": "耗材搜索关键词列表，一条对应一种需要单独比价的耗材",
       "aliases": "设备别名/简称，用于关键词归一化匹配",
       "notes": "选型提示"
     },
-    "match_keys": "键为设备型号特征串，category_engine 会将其归一化后与用户关键词做子串/模糊匹配"
+    "match_keys": "键为设备型号特征串，category_engine 会将其归一化后与用户关键词做子串/模糊匹配",
+    "keyword_policy": [
+      "一条 model_keywords = 一种需要单独比价的耗材（鼓粉分离的机型要分别列出粉盒与硒鼓）。",
+      "关键词不写「原装」「适用」后缀：上游对这两个词不做筛选，实测「惠普 88A 碳粉盒 原装」52 条里 oem_likely 只有 2 条（¥529/¥1009）、compatible 47 条（最低 ¥5.0、中位 ¥28.0），白占一条查询配额。",
+      "供应类型由返回结果的 items[].attributes 判定，不由查询关键词判定。"
+    ]
   },
 
   "M126a": {
@@ -19,8 +23,7 @@
     "category": "多功能一体机",
     "consumable_type": "碳粉盒/硒鼓",
     "model_code": "CC388A / 88A",
-    "original_keyword": "惠普 88A 碳粉盒 原装",
-    "compatible_keyword": "惠普 88A 碳粉盒 适用",
+    "model_keywords": ["惠普 88A 碳粉盒"],
     "aliases": ["M126a", "M126nw", "M1136", "M1213", "M1216", "P1106", "P1108"],
     "notes": "CC388A 硒鼓为鼓粉一体，兼容型号极多，注意区分是否带芯片"
   },
@@ -29,8 +32,7 @@
     "category": "多功能一体机",
     "consumable_type": "碳粉盒/硒鼓",
     "model_code": "CC388A / 88A",
-    "original_keyword": "惠普 88A 碳粉盒 原装",
-    "compatible_keyword": "惠普 88A 碳粉盒 适用",
+    "model_keywords": ["惠普 88A 碳粉盒"],
     "aliases": ["M1136", "M1139", "M1213nf"],
     "notes": "与 M126a 共用 CC388A 硒鼓"
   },
@@ -39,8 +41,7 @@
     "category": "激光打印机",
     "consumable_type": "碳粉盒",
     "model_code": "CF228A / 28A",
-    "original_keyword": "惠普 28A 碳粉盒 原装",
-    "compatible_keyword": "惠普 28A 碳粉盒 适用",
+    "model_keywords": ["惠普 28A 碳粉盒"],
     "aliases": ["M403d", "M403dn", "M427fdw", "M427dw"],
     "notes": "CF228A 为鼓粉一体，单页成本较高"
   },
@@ -49,8 +50,7 @@
     "category": "彩色多功能一体机",
     "consumable_type": "彩色碳粉盒四色套装",
     "model_code": "CF500A/CF501A/CF502A/CF503A (202A)",
-    "original_keyword": "惠普 202A 彩色碳粉盒 原装 四色",
-    "compatible_keyword": "惠普 202A 彩色碳粉盒 适用 四色",
+    "model_keywords": ["惠普 202A 彩色碳粉盒 四色"],
     "aliases": ["M281fdw", "M254dw", "M280nw"],
     "notes": "312A/202A 分黑彩，报价需注明单色还是套装"
   },
@@ -59,8 +59,7 @@
     "category": "喷墨打印机",
     "consumable_type": "墨水",
     "model_code": "004",
-    "original_keyword": "爱普生 004 墨水 原装",
-    "compatible_keyword": "爱普生 004 墨水 适用",
+    "model_keywords": ["爱普生 004 墨水"],
     "aliases": ["L3151", "L3153", "L3158", "L3118", "L3119", "L3251", "L3253"],
     "notes": "004 四色墨水（黑/青/洋红/黄），建议整套购买"
   },
@@ -69,8 +68,7 @@
     "category": "喷墨打印机",
     "consumable_type": "墨水",
     "model_code": "004",
-    "original_keyword": "爱普生 004 墨水 原装",
-    "compatible_keyword": "爱普生 004 墨水 适用",
+    "model_keywords": ["爱普生 004 墨水"],
     "aliases": ["L3255", "L3256", "L3258", "L3267", "L3269"],
     "notes": "与 L3151 系列共用 004 墨水"
   },
@@ -79,8 +77,7 @@
     "category": "喷墨打印机",
     "consumable_type": "墨水",
     "model_code": "GI-890",
-    "original_keyword": "佳能 GI-890 墨水 原装",
-    "compatible_keyword": "佳能 GI-890 墨水 适用",
+    "model_keywords": ["佳能 GI-890 墨水"],
     "aliases": ["G3800", "G2800", "G1800", "G3810"],
     "notes": "GI-890 四色，墨水仓式加墨"
   },
@@ -89,8 +86,7 @@
     "category": "激光打印机",
     "consumable_type": "硒鼓",
     "model_code": "CRG-303 / FX-9",
-    "original_keyword": "佳能 CRG303 硒鼓 原装",
-    "compatible_keyword": "佳能 CRG303 硒鼓 适用",
+    "model_keywords": ["佳能 CRG303 硒鼓"],
     "aliases": ["LBP2900", "LBP2900+", "LBP3000"],
     "notes": "CRG-303 硒鼓，兼容品极廉价，注意页产量标注"
   },
@@ -99,8 +95,7 @@
     "category": "多功能一体机",
     "consumable_type": "碳粉盒",
     "model_code": "CRG-337",
-    "original_keyword": "佳能 CRG337 碳粉盒 原装",
-    "compatible_keyword": "佳能 CRG337 碳粉盒 适用",
+    "model_keywords": ["佳能 CRG337 碳粉盒"],
     "aliases": ["MF241d", "MF232w", "MF243d", "MF244dw", "MF249dw"],
     "notes": "CRG-337 与 CRG-333 不通用，务必核对型号"
   },
@@ -109,28 +104,25 @@
     "category": "激光打印机",
     "consumable_type": "碳粉盒/粉盒",
     "model_code": "TN-2225 / TN-2215",
-    "original_keyword": "兄弟 TN-2225 粉盒 原装",
-    "compatible_keyword": "兄弟 TN-2225 粉盒 适用",
+    "model_keywords": ["兄弟 TN-2225 粉盒"],
     "aliases": ["HL-2260", "HL-2260D", "DCP-7080", "DCP-7080D", "MFC-7480D"],
-    "notes": "兄弟机型粉盒与硒鼓分离，TN-2225 高容约 2600 页"
+    "notes": "兄弟机型粉盒与硒鼓分离，TN-2225 高容约 2600 页；硒鼓 DR-2250 另计"
   },
   "DCP-7180DN": {
     "device_name": "兄弟 Brother DCP-7180DN 一体机",
     "category": "多功能一体机",
     "consumable_type": "粉盒 + 硒鼓",
     "model_code": "TN-2325 / DR-2350",
-    "original_keyword": "兄弟 TN-2325 粉盒 原装",
-    "compatible_keyword": "兄弟 TN-2325 粉盒 适用",
+    "model_keywords": ["兄弟 TN-2325 粉盒", "兄弟 DR-2350 硒鼓"],
     "aliases": ["DCP-7180DN", "DCP-7080D", "MFC-7380", "HL-2560DN", "HL-2260D"],
-    "notes": "粉盒 TN-2325 约 2600 页；硒鼓 DR-2350 约 12000 页，需分开比价"
+    "notes": "粉盒 TN-2325 约 2600 页；硒鼓 DR-2350 约 12000 页。两者差一个价位档（3 轮中位价：粉盒 ¥32.4/¥90.0/¥35.9，硒鼓 ¥82.1/¥92.5/¥87.5），必须分开比价"
   },
   "P2200": {
     "device_name": "奔图 Pantum P2200 激光打印机",
     "category": "激光打印机",
     "consumable_type": "碳粉盒/硒鼓",
     "model_code": "PD-201 / PD-201T",
-    "original_keyword": "奔图 PD-201 硒鼓 原装",
-    "compatible_keyword": "奔图 PD-201 硒鼓 适用",
+    "model_keywords": ["奔图 PD-201 硒鼓"],
     "aliases": ["P2200", "P2206", "P2500", "M6500", "M6550", "M6600"],
     "notes": "PD-201 硒鼓，PD-201T 为高容版"
   },
@@ -139,8 +131,7 @@
     "category": "多功能一体机",
     "consumable_type": "碳粉盒/硒鼓",
     "model_code": "PD-201",
-    "original_keyword": "奔图 PD-201 硒鼓 原装",
-    "compatible_keyword": "奔图 PD-201 硒鼓 适用",
+    "model_keywords": ["奔图 PD-201 硒鼓"],
     "aliases": ["M6500", "M6500NW", "M6550NW", "M6600NW"],
     "notes": "与 P2200 共用 PD-201 硒鼓"
   },
@@ -149,28 +140,25 @@
     "category": "多功能一体机",
     "consumable_type": "碳粉盒/硒鼓",
     "model_code": "LT201 / LD201",
-    "original_keyword": "联想 LT201 粉盒 原装",
-    "compatible_keyword": "联想 LT201 粉盒 适用",
+    "model_keywords": ["联想 LT201 粉盒", "联想 LD201 硒鼓"],
     "aliases": ["M7206", "M7216", "M7605D", "M7400", "M7450F"],
-    "notes": "LT201 粉盒 + LD201 硒鼓，鼓粉分离"
+    "notes": "LT201 粉盒 + LD201 硒鼓，鼓粉分离，需分别比价"
   },
   "M7605D": {
     "device_name": "联想 Lenovo M7605D 一体机",
     "category": "多功能一体机",
     "consumable_type": "粉盒 + 硒鼓",
     "model_code": "LT2451 / LD2451",
-    "original_keyword": "联想 LT2451 粉盒 原装",
-    "compatible_keyword": "联想 LT2451 粉盒 适用",
+    "model_keywords": ["联想 LT2451 粉盒", "联想 LD2451 硒鼓"],
     "aliases": ["M7605D", "M7400Pro", "M7455DNF", "M7675DXF", "LJ2605D", "LJ2655DN"],
-    "notes": "LT2451 粉盒（约 2600 页）+ LD2451 硒鼓（约 12000 页）"
+    "notes": "LT2451 粉盒（约 2600 页）+ LD2451 硒鼓（约 12000 页），需分别比价"
   },
   "M3070": {
     "device_name": "联想 Lenovo M3070DNA 一体机",
     "category": "多功能一体机",
     "consumable_type": "粉盒 + 硒鼓",
     "model_code": "LT401 / LD401",
-    "original_keyword": "联想 LT401 粉盒 原装",
-    "compatible_keyword": "联想 LT401 粉盒 适用",
+    "model_keywords": ["联想 LT401 粉盒", "联想 LD401 硒鼓"],
     "aliases": ["M3070", "M3070DNA", "M7675DXF", "LJ4000DN"],
     "notes": "LT401 高容粉盒（约 10000 页），适合中高印量"
   },
@@ -179,8 +167,7 @@
     "category": "复合机",
     "consumable_type": "碳粉盒",
     "model_code": "MP2014C",
-    "original_keyword": "理光 MP2014C 碳粉盒 原装",
-    "compatible_keyword": "理光 MP2014C 碳粉盒 适用",
+    "model_keywords": ["理光 MP2014C 碳粉盒"],
     "aliases": ["MP2014", "MP2014AD", "MP2014EN", "M2700"],
     "notes": "MP2014C 碳粉约 12000 页，复印量大建议关注单页成本"
   },
@@ -189,8 +176,7 @@
     "category": "复合机",
     "consumable_type": "碳粉盒",
     "model_code": "M2701C",
-    "original_keyword": "理光 M2701C 碳粉盒 原装",
-    "compatible_keyword": "理光 M2701C 碳粉盒 适用",
+    "model_keywords": ["理光 M2701C 碳粉盒"],
     "aliases": ["M2701", "M2702", "MP2014AD"],
     "notes": "请与 MP2014C 区分，两者不通用"
   },
@@ -199,8 +185,7 @@
     "category": "多功能一体机",
     "consumable_type": "碳粉盒",
     "model_code": "TK-1113",
-    "original_keyword": "京瓷 TK-1113 碳粉盒 原装",
-    "compatible_keyword": "京瓷 TK-1113 碳粉盒 适用",
+    "model_keywords": ["京瓷 TK-1113 碳粉盒"],
     "aliases": ["FS-1120MFP", "FS-1040", "FS-1020MFP", "FS-1060DN"],
     "notes": "TK-1113 约 2500 页；京瓷鼓体寿命长，多数只换粉盒"
   },
@@ -209,8 +194,7 @@
     "category": "多功能一体机",
     "consumable_type": "碳粉盒",
     "model_code": "TK-1163",
-    "original_keyword": "京瓷 TK-1163 碳粉盒 原装",
-    "compatible_keyword": "京瓷 TK-1163 碳粉盒 适用",
+    "model_keywords": ["京瓷 TK-1163 碳粉盒"],
     "aliases": ["M2540dn", "M2040dn", "P2040dn", "M2540dw"],
     "notes": "TK-1163 约 15000 页，长寿命鼓体"
   },
@@ -219,8 +203,7 @@
     "category": "复合机",
     "consumable_type": "碳粉盒",
     "model_code": "CT351174",
-    "original_keyword": "富士施乐 S2110 碳粉盒 原装",
-    "compatible_keyword": "富士施乐 S2110 碳粉盒 适用",
+    "model_keywords": ["富士施乐 S2110 碳粉盒"],
     "aliases": ["S2110", "S1810", "S2011", "S2320", "S2520"],
     "notes": "原厂碳粉约 9000 页，第三方碳粉需注意载体消耗"
   },
@@ -229,8 +212,7 @@
     "category": "彩色复合机",
     "consumable_type": "彩色碳粉盒四色",
     "model_code": "TN223 (K/C/M/Y)",
-    "original_keyword": "柯尼卡美能达 TN223 碳粉 原装 四色",
-    "compatible_keyword": "柯尼卡美能达 TN223 碳粉 适用 四色",
+    "model_keywords": ["柯尼卡美能达 TN223 碳粉 四色"],
     "aliases": ["C226", "C266", "C7222", "C7226"],
     "notes": "TN223 四色独立，另需关注废粉盒与感光鼓"
   },
@@ -239,8 +221,7 @@
     "category": "喷墨打印机",
     "consumable_type": "墨盒",
     "model_code": "LC-3119 (四色)",
-    "original_keyword": "兄弟 LC3119 墨盒 原装",
-    "compatible_keyword": "兄弟 LC3119 墨盒 适用",
+    "model_keywords": ["兄弟 LC3119 墨盒"],
     "aliases": ["MFC-J690DW", "MFC-J690", "DCP-J105"],
     "notes": "LC-3119 分黑彩单支装"
   },
@@ -249,8 +230,7 @@
     "category": "标签/票据打印机",
     "consumable_type": "热敏标签纸 / 碳带",
     "model_code": "热敏纸卷 40x30mm / 蜡基碳带",
-    "original_keyword": "佳博 热敏标签纸 40x30 不干胶",
-    "compatible_keyword": "热敏标签纸 40x30 不干胶 卷装",
+    "model_keywords": ["热敏标签纸 40x30 不干胶 卷装", "蜡基碳带 蜡基 卷装"],
     "aliases": ["GP-3120TU", "GP-1324D", "GP-2120TU"],
     "notes": "耗材为纸卷与碳带，需按毫米规格与卷芯内径匹配"
   },
@@ -259,8 +239,7 @@
     "category": "针式打印机",
     "consumable_type": "色带",
     "model_code": "S015290 / C13S015290",
-    "original_keyword": "爱普生 LQ630K 色带 原装",
-    "compatible_keyword": "爱普生 LQ630K 色带 适用",
+    "model_keywords": ["爱普生 LQ630K 色带"],
     "aliases": ["LQ-630K", "LQ-635K", "LQ-730K", "LQ-615K"],
     "notes": "色带架与色带芯需区分，通用机型可跨型号替代"
   },
@@ -269,8 +248,7 @@
     "category": "票据打印机",
     "consumable_type": "色带",
     "model_code": "映美 630K 色带",
-    "original_keyword": "映美 色带 630K 原装",
-    "compatible_keyword": "映美 色带 630K 适用",
+    "model_keywords": ["映美 色带 630K"],
     "aliases": ["SP-230", "FP-630K", "FP-570K", "SP-320"],
     "notes": "票据色带常见单支与五支装，按支折算更直观"
   }

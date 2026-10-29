@@ -54,8 +54,8 @@ async def detail(
     cleaned = maishou.clean_detail(str(id), int(source), detail_data, target_data)
     if not cleaned["buy_url"] and not cleaned["coupon_code"]:
         warnings.append(
-            f"【{cleaned['platform']}】接口可能未授权绑定，暂时无法提取直达购买链接，"
-            "请在回复中如实说明并退守展示已授权的平台。"
+            f"【{cleaned['platform']}】接口可能未授权绑定，或该商品已下架/暂不支持转链，"
+            "暂时无法提取直达购买链接，请在回复中如实说明并退守展示已授权的平台。"
         )
 
     # 详情体积可能很大，默认不返回原始结构，避免客户端解析负担
@@ -72,6 +72,10 @@ async def detail(
         "source": int(source),
         "platform": cleaned["platform"],
         "client_ip": ip,
+        # 上游未提供开票资质字段：实测扫描 detail 全部 69~70 个字段（京东/拼多多/天猫）
+        # 均无「发票/专票/质保/保修/联保/三包」信号，故 invoice/warranty 恒定落在
+        # 「未标注」分支。这里给出显式开关，让宿主 AI 能整列抑制而不是逐行写「未标注」。
+        "invoice_data_available": False,
         "warnings": warnings,
         "data": cleaned,
     }

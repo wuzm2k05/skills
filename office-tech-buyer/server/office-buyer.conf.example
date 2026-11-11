@@ -1,0 +1,42 @@
+# 办公设备易采买 —— 云端服务：常驻脚本配置模板
+#
+# 用法：cp office-buyer.conf.example office-buyer.conf 后按需修改。
+# office-buyer.conf 不入库（见 .gitignore），因此每台机器的端口、worker 数可以不同。
+#
+# 本文件由 scripts/_common.sh 以 shell 语法 source，写法就是普通的 KEY=value。
+# 优先级：命令行/环境变量 > 本文件 > 脚本内置默认值。
+# 注意：这里只放「脚本自身」的启动参数；服务端的业务配置（上游地址、限流、
+# CORS 等）仍然走 OFFICE_BUYER_* 环境变量，见 README「配置项」一节。
+
+# 监听地址与端口。端口不填时，脚本会直接从 app/config.py 读取默认值。
+HOST=0.0.0.0
+#PORT=11443
+
+# uvicorn worker 数。未命中日志按 worker 各自滚动，精度要求高时可设为 1。
+WORKERS=2
+
+# uvicorn 日志级别：critical / error / warning / info / debug / trace
+LOG_LEVEL=info
+
+# 上游未命中日志目录（服务端 OFFICE_BUYER_LOG_DIR 的来源）
+#LOG_DIR=/var/log/office-buyer
+
+# 是否信任反向代理传来的 X-Forwarded-For（1/0）。
+# 置于 Nginx / SLB 之后时设为 1，未命中日志才能记录真实客户端 IP；
+# 直接暴露在公网时设为 0，避免客户端伪造 IP。
+TRUST_PROXY=1
+
+# 崩溃后重启前的等待秒数（连续崩溃会自动指数退避，最长 60 秒）
+RESTART_DELAY=3
+
+# start.sh 等待健康检查通过的秒数
+START_TIMEOUT=30
+
+# stop.sh 等待进程退出的秒数，超时后用 --force 才 SIGKILL
+STOP_TIMEOUT=20
+
+# 运行期文件目录（PID、停止标记、守护日志），默认 server/run
+#OFFICE_BUYER_RUNTIME_DIR=/var/run/office-buyer
+
+# 虚拟环境目录，默认 server/.venv
+#VENV_DIR=/opt/office-buyer/.venv

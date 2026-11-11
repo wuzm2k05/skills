@@ -205,6 +205,23 @@ class Settings:
         default_factory=lambda: _int("OFFICE_BUYER_DEFAULT_SHEETS_PER_PACK", 500)
     )
 
+    # ---- LLM 智能化运维 ----
+    llm_enabled: bool = field(
+        default_factory=lambda: _bool("OFFICE_BUYER_LLM_ENABLED", False)
+    )
+    llm_api_key: str = field(
+        default_factory=lambda: _str("OFFICE_BUYER_LLM_API_KEY", "")
+    )
+    llm_base_url: str = field(
+        default_factory=lambda: _str("OFFICE_BUYER_LLM_BASE_URL", "https://api.openai.com/v1")
+    )
+    llm_model: str = field(
+        default_factory=lambda: _str("OFFICE_BUYER_LLM_MODEL", "gpt-4o")
+    )
+    llm_timeout: float = field(
+        default_factory=lambda: _float("OFFICE_BUYER_LLM_TIMEOUT", 30.0)
+    )
+
     # ---- 派生路径 ----
     @property
     def unmatched_log(self) -> Path:

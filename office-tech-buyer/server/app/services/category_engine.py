@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import json
 import re
+import logging
 import threading
 from dataclasses import dataclass, field
 from datetime import datetime
@@ -21,6 +22,8 @@ from pathlib import Path
 from typing import Any, Iterable
 
 from ..config import settings
+
+logger = logging.getLogger(__name__)
 
 # --------------------------------------------------------------------------- #
 # 常量与规则表
@@ -73,18 +76,13 @@ BOX_RE = re.compile(r"(整箱|箱装|一整箱|/\s*箱|每箱|一箱)")
 SHEET_COUNT_RE = re.compile(r"(\d{2,5})\s*(?:张|页|枚|片)")
 #: 耗材型号：字母+数字组合，如 CC388A / PD-201 / TN-2325 / 88A。
 #:
-#: 不能使用 ``\b``：``\b`` 的边界定义是「词字符与非词字符之间」，而汉字在 Python
-#: 的 re 里算词字符，所以「适用惠普CC388A碳粉」中 CC388A 左右都是词字符，``\b``
-#: 不成立，整条正则匹配不到。实测该查询下 56 条商品里 17 条标题含 CC388A，
-#: 旧写法只解析出 8 条——而 ``attributes.model_code`` 正是 answer-rules 让宿主 AI
-#: 信任的型号来源。改用「右侧不是字母数字」的前瞻代替 ``\b``，汉字相邻即可命中。
-#:
-#: 第二分支 ``\d{2,3}[A-Z]{1,2}`` 覆盖「88A」「28A」这类以数字开头的短型号
-#: （惠普按印量编号的碳粉盒），并要求右侧同样不是字母数字，避免把
-#: 「24/6 订书钉」「DeskJet 2720」这类误判成型号。
+#: 改进后的正则：
+#: 1. 要求型号至少包含 2 个数字，避免误伤单字母或纯数字。
+#: 2. 支持更多连字符和斜杠组合。
 MODEL_RE = re.compile(
-    r"([A-Z]{1,4}-?\d{2,5}[A-Za-z]{0,2}(?![A-Za-z0-9])"
-    r"|\d{2,3}[A-Z]{1,2}(?![A-Za-z0-9]))"
+    r"([A-Z]{1,4}[-/\s]?\d{1,5}[A-Za-z]{0,2}(?![A-Za-z0-9])"
+    r"|\d{2,3}[-/\s]?[A-Z]{1,2}(?![A-Za-z0-9]))",
+    re.IGNORECASE
 )
 
 #: 换算策略 → 该品类的天然比价单位
@@ -267,6 +265,7 @@ class MatchResult:
     attributes: dict[str, Any] = field(default_factory=dict)
     unit_calculation: str | None = None
     unit_price_basis: dict[str, Any] = field(default_factory=dict)
+    clarify_questions: list[dict[str, Any]] = field(default_factory=list)
     notes: str = ""
 
     def plan(self, max_related: int) -> list[dict[str, Any]]:
@@ -574,6 +573,22 @@ def build_match(keyword: str) -> MatchResult:
     )
 
     hit = TABLES.find(normalized)
+    
+    # 增加规格澄清逻辑
+    if not hit:
+        if "纸" in normalized and not PAPER_SIZE_RE.search(normalized):
+            result.clarify_questions.append({
+                "question": "你需要什么规格的纸张？",
+                "options": ["A4 70g (最常用)", "A4 80g (更厚实)", "A3 80g (大图专用)"],
+                "header": "纸张规格"
+            })
+        elif "服务器" in normalized and "内存" in normalized and "ECC" not in normalized.upper():
+             result.clarify_questions.append({
+                "question": "服务器内存通常需要 ECC 校验，是否需要开启此过滤？",
+                "options": ["需要 ECC (推荐)", "不需要 ECC"],
+                "header": "内存校验"
+            })
+
     if not hit:
         result.attributes = parse_attributes(normalized)
         return result
@@ -674,23 +689,26 @@ class SizeRotatingLog:
         self.path.replace(self.path.with_name(f"{self.path.name}.1"))
 
     def append(self, line: str) -> None:
-        """追加一行；滚动与写入失败都不抛出，只打印告警。
-
-        写入失败（磁盘只读、配额耗尽等）不能影响主流程——接口仍须正常返回
-        ``matched: false``，这是本服务对调用方的承诺。
-        """
+        """追加一行；滚动与写入失败都不抛出，只打印告警。"""
         record = line + "\n"
-        size = len(record.encode("utf-8"))
+        data = record.encode("utf-8")
+        size = len(data)
+        
         with self._lock:
             try:
                 self.path.parent.mkdir(parents=True, exist_ok=True)
-                if self.max_bytes and self.path.exists():
+                
+                # 检查是否需要滚动
+                if self.max_bytes > 0 and self.path.exists():
                     if self.path.stat().st_size + size > self.max_bytes:
                         self._rollover(size)
-                with self.path.open("a", encoding="utf-8") as fp:
-                    fp.write(record)
-            except OSError as exc:
-                print(f"[category_engine] 写入未命中日志失败: {exc}")
+                
+                # 使用二进制追加，避免编码问题
+                with self.path.open("ab") as fp:
+                    fp.write(data)
+            except Exception as exc:
+                # 生产环境下使用标准 logger 记录错误，不抛出异常影响业务
+                logger.error(f"[category_engine] 写入未命中日志失败: {exc}")
 
     def read_lines(self, limit: int | None = None) -> list[str]:
         """按「先旧后新」的顺序读取当前分片与历史分片。

@@ -120,6 +120,7 @@ async def root() -> dict[str, Any]:
             f"{settings.api_prefix}/detail?source=2&id=123456789",
             f"{settings.api_prefix}/consumable/unmatched",
             f"{settings.api_prefix}/consumable/reload",
+            f"{settings.api_prefix}/consumable/llm-update",
         ],
         "sources": SOURCE_NAMES,
     }

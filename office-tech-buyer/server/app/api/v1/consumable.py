@@ -11,6 +11,7 @@ from typing import Any
 from fastapi import APIRouter, Query
 
 from ...services import category_engine as engine
+from ...services.llm_engine import llm_engine
 
 router = APIRouter(tags=["consumable"])
 
@@ -37,3 +38,9 @@ async def reload_mappings() -> dict[str, Any]:
             "paper_spec": len(engine.TABLES.paper_spec),
         },
     }
+
+
+@router.post("/consumable/llm-update", summary="利用 LLM 智能补齐映射表（智能化运维）")
+async def llm_update() -> dict[str, Any]:
+    """分析未命中日志并自动更新映射表。"""
+    return await llm_engine.analyze_and_update()

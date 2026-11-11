@@ -130,6 +130,7 @@ async def search(
             "matched_by": match.matched_by,
             "log_line": line,
             "client_ip": ip,
+            "clarify_questions": match.clarify_questions,
             "channels_covered": _merge_channels([enriched]),
             "hint": (
                 "云端静态映射表未命中该设备。请宿主 AI 改用「设备型号 + 耗材类别词」再次调用本接口"
@@ -170,6 +171,7 @@ async def search(
         "unit_calculation": match.unit_calculation,
         "unit_price_basis": match.unit_price_basis,
         "notes": match.notes,
+        "clarify_questions": match.clarify_questions,
         "client_ip": ip,
         "channels_covered": _merge_channels(queries),
         "queries": queries,

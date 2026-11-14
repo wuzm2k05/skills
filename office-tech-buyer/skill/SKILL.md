@@ -5,7 +5,7 @@ display_name_en: "Office Tech Buyer"
 description: "专为企业行政、IT运维与办公采购打造的全品类智能化比价工具。支持电脑整机、服务器、打印机、人体工学椅全网底价查询，独家支持【原装 vs 兼容耗材】精准匹配与复印纸/纸品单价换算。"
 description_zh: "【办公采买不踩坑】支持电脑/服务器/打印机/复印纸/办公椅全网比价，智能匹配耗材型号并区分原装与第三方兼容"
 description_en: "Cross-platform price comparison for office hardware and consumables, with OEM-vs-compatible matching and paper unit-price conversion"
-version: 1.3.0
+version: 1.3.1
 author: 玖结点信息技术有限公司
 icon: "_icon.png"
 homepage: https://github.com/wuzm2k05/skills/office-tech-buyer
@@ -129,6 +129,21 @@ uv run scripts/main.py search --source=0 --keyword='戴尔 PowerEdge R750 2.5寸
 uv run scripts/main.py unmatched
 ```
 
+### 商品缩略图（渲染表格前跑）
+
+WorkBuddy 不支持行内 HTML，缩略图只能靠 URL 变形参数让 CDN 现算。本脚本按各平台
+CDN 规则构造 24px 缩略图地址，并**逐条读图片头校验真实像素**（HTTP 200 不等于小图：
+有的 CDN 遇到不认识的参数会静默返回原图）：
+
+```shell
+uv run scripts/thumb.py --url '<picUrl1>' --url '<picUrl2>' --url '<picUrl3>'
+cat pic_urls.json | uv run scripts/thumb.py --stdin     # JSON 数组或每行一个
+```
+
+产物 JSON 的 `results` 以原 `picUrl` 为键：`ok: true` 的行用它的 `thumb_url` 写
+`![商品名](thumb_url)`；`ok: false` 的行**不放图、降级为纯文字**（`reason` 会说明
+是 `no_rule` 还是 `size_mismatch`）。**严禁用未经校验的原图地址**。
+
 ### 交付前自检（强制）
 
 回答渲染完成后，**必须**先把原文喂给自检脚本再交给用户。只要脚本退出码非 0，
@@ -161,11 +176,12 @@ export OFFICE_BUYER_SERVER_URL='http://localhost:11443'
 - **【购买链接】紧随【预览】列，不得放在最后一列**：列序固定为
   `预览 | 购买链接 | 平台 | 店铺类型 | 价格 | 专票/质保 | 核心特征/备注`。
   表格一宽，最后一列最先被截在可视区外，用户就点不到链接了；把最长的备注列放最后。
-- **缩略图必须写死小尺寸**：【预览】列用行内 HTML
-  `<img src="{picUrl}" alt="{商品名}" width="28" height="28">`，28px 约 1.5 行文字高，
-  即「比一行文字稍大」。**严禁 `![商品名](picUrl)`**——Markdown 图片语法不能指定尺寸，
-  一定渲染成原图大小（常为 800×800），把右边所有列顶出可视区。
-  若宿主渲染器不支持行内 HTML，就直接去掉【预览】列，不要退回 `![]()`。
+- **缩略图必须先构造+校验**：WorkBuddy **不支持行内 HTML**，尺寸没法靠标签写死，
+  只能让图片本身就是小的。用 `scripts/thumb.py` 按各平台 CDN 规则改 `picUrl`，
+  **只有它返回 `ok: true` 的 `thumb_url` 才允许写进表格**：
+  `![商品名](thumb_url)`。`ok: false` 的行**不放图片、降级为纯文字**，
+  **严禁退回原 `picUrl`**（原图常为 800×800，会把表格撑成一屏高）。
+  详见 `references/answer-rules.md` 第 2.0 节。
 - **规格澄清逻辑**：如果响应中包含 `clarify_questions`，必须先以友好方式向用户询问这些问题，然后再根据用户选择进行二次比价。
 - **区分供应类型**：原装与第三方兼容耗材必须分栏或分行展示，不得混价比较。
 - **纸品按单价横比**：复印纸/文具类必须折算到「¥/包」「¥/卷」「¥/支」再比较总价。
@@ -179,3 +195,7 @@ export OFFICE_BUYER_SERVER_URL='http://localhost:11443'
 以及由云端转请求三方比价平台的商品与价格数据；`scripts/check_answer.py`
 是纯本地的格式自检器，只读取你传给它的回答文本（`--text` / stdin）或你指定的文件
 （`--file`），不发起任何网络请求。
+
+`scripts/thumb.py` 是唯一的例外：它**会**向各平台 CDN 发请求——但只到图片 CDN，
+只为校验缩略图是否真的缩到了 24px，且一律带 `Range: bytes=0-65535`，最多读前 64KB。
+它不访问云端比价服务，也不上传任何数据。

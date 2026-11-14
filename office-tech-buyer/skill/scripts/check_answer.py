@@ -15,11 +15,15 @@
 另外还检查两项会「让链接看不见」「把表格撑坏」的排版问题（见 answer-rules 第 2.0 节）：
 
 4. 【购买链接】被放在**最后一列**——表格一宽，最后一列最先被截在可视区外；
-5. 【预览】列用了 `![商品名](picUrl)`、没写死尺寸的 `<img>`、或尺寸过大——Markdown
-   图片语法无法指定尺寸，会被渲染成原图大小，把右侧的价格与链接全部顶出屏幕。
+5. 【预览】列贴了**原图 URL**——WorkBuddy 不支持行内 HTML，图片尺寸只能靠 URL 变形
+   参数控制，贴原图（800×800）会把表格撑成一屏高，把右侧的价格与链接全部顶出屏幕。
 
-这两项与前三项一样是 error（退出码 1）。`warnings` 只留给「链接写了『未获取』」这类
-需要人工确认、但格式本身合法的情况。
+第 5 项的判定是**语法层面**的：只检查 URL 是否带有已登记的 CDN 缩略图变形标记、尺寸是否
+在允许范围内。它**证明不了**那张图真的是缩略图——实测有 CDN 对不认识参数静默返回原图
+（HTTP 200 + 原图字节）。真正的保证来自 `scripts/thumb.py` 的逐条像素校验：**只有
+`thumb.py` 返回 `ok: true` 的 URL 才允许写进表格**。
+
+`warnings` 留给「链接写了『未获取』」这类需要人工确认、但格式本身合法的情况。
 
 用法::
 
@@ -52,9 +56,10 @@ SEVERITY_WARNING = "warning"
 #: 链接列里「确实拿不到链接」的合法写法（answer-rules 第 5 节：没有拿到链接的写"未获取"）
 MISSING_ACK_MARKERS = ("未获取", "未提供", "暂无链接", "未取到")
 
-#: 【预览】列缩略图的尺寸上限（px）。规则要求 28px「比一行文字稍大」，
-#: 这里放宽到 48px，仍然远小于原图（电商图常为 800×800）。
-MAX_PREVIEW_PX = 48
+#: 【预览】列允许出现的缩略图尺寸（px）。Process 见 ``scripts/thumb.py``。
+PREVIEW_SIZE = 24
+#: 带尺寸变形标记的合法上限：24/30/40 都在各 CDN 白名单内，更大的就别用了。
+PREVIEW_MAX_PX = 40
 
 #: 链接列里属于「根本没写」的占位写法。归一化后精确匹配，一律算 error。
 PLACEHOLDER_CELLS = {
@@ -79,14 +84,23 @@ RE_BARE_URL = re.compile(r"https?://[^\s<>()\[\]\"'“”‘’，。；;、）�
 #: 淘宝/天猫淘口令，如 ``￥AbC123xyz￥``
 RE_TAOCODE = re.compile(r"￥[0-9A-Za-z]{6,}￥")
 RE_HTTP = re.compile(r"^https?://", re.I)
-#: 行内 HTML 图片标签
+#: 行内 HTML 图片标签——WorkBuddy 的渲染器不支持行内 HTML，写了等于没写
 RE_HTML_IMG = re.compile(r"<img\b[^>]*>", re.I)
-#: HTML 属性，值可带单引号、双引号或不带引号
-RE_ATTR = re.compile(
-    r"""([a-zA-Z-]+)\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s"'>]+))"""
+#: Markdown 图片语法 ``![alt](url)``。**本技能里允许使用**，但 URL 必须已带缩略图变形标记
+RE_MD_IMAGE = re.compile(r"!\[[^\]\n]*\]\(\s*(<[^>\n]*>|[^()\s]*(?:\([^()]*\)[^()\s]*)*)\s*\)")
+#: 各 CDN 的缩略图变形标记 → 从 URL 里抠出请求尺寸（已逐条实测，见 scripts/thumb.py）
+RE_THUMB_MARKERS: tuple[tuple[re.Pattern[str], int], ...] = (
+    # 淘宝/天猫：文件名后缀 _24x24.jpg（返回的其实是 webp，只看 URL 形态即可）
+    (re.compile(r"[_~](\d{1,4})x(\d{1,4})\.(?:jpe?g|png|webp)(?:\?|$)", re.I), 1),
+    # 拼多多 / 快手：?imageMogr2/thumbnail/24x24
+    (re.compile(r"imageMogr2/thumbnail/(\d{1,4})x(\d{1,4})", re.I), 1),
+    # 快手：?x-oss-process=image/resize,w_24
+    (re.compile(r"x-oss-process=image/resize,[^&\s]*w_(\d{1,4})", re.I), 1),
+    # 京东：/s24x24_jfs/
+    (re.compile(r"/s(\d{1,4})x(\d{1,4})_jfs/", re.I), 1),
+    # 苏宁：_24w_24h_4e
+    (re.compile(r"_(\d{1,4})w_(\d{1,4})h_", re.I), 1),
 )
-#: Markdown 图片语法 ``![alt](url)``——无法指定尺寸，规则 2.0 里明令禁止
-RE_MD_IMAGE = re.compile(r"!\[[^\]\n]*\]\(\s*[^()\s]*(?:\([^()]*\)[^()\s]*)*\s*\)")
 
 
 # --------------------------------------------------------------------------- #
@@ -307,64 +321,71 @@ def find_preview_column(header: list[str]) -> int | None:
     return None
 
 
-def cell_preview_pixels(cell: str) -> tuple[bool, int | None]:
-    """判断【预览】单元格的图片写法。
+def thumb_marker_size(url: str) -> int | None:
+    """URL 里是否带缩略图变形标记；带了就返回它请求的尺寸（px）。
 
-    返回 ``(has_image, declared_max_px)``：``declared_max_px`` 为该单元格里所有
-    图片声明尺寸的最大值，``None`` 表示没有任何一张写了尺寸。
+    **这是语法层面的判断**：只认各 CDN 已登记的变形写法。返回 ``None`` 说明 URL 没带
+    任何变形标记，很可能就是原图。反过来，带标记也不保证 CDN 真的照做了——实测有 CDN
+    对不认识的参数静默返回原图，所以真伪只能靠 ``scripts/thumb.py`` 逐条验像素。
     """
-    has_image = False
+    for pattern, group in RE_THUMB_MARKERS:
+        match = pattern.search(url)
+        if match:
+            try:
+                return int(match.group(group))
+            except (TypeError, ValueError):
+                continue
+    return None
+
+
+def cell_preview(cell: str) -> tuple[bool, bool, list[int]]:
+    """解析【预览】单元格。
+
+    返回 ``(has_image, has_inline_html, marker_sizes)``：
+    ``has_inline_html`` 表示用了 ``<img>``（WorkBuddy 不支持，等于没写）；
+    ``marker_sizes`` 是 Markdown 图片 URL 上带缩略图标记的尺寸列表。
+    """
+    has_inline_html = bool(RE_HTML_IMG.search(cell))
     sizes: list[int] = []
-
-    if RE_MD_IMAGE.search(cell):
-        # Markdown 图片语法不能指定尺寸，一定按原图渲染
-        has_image = True
-
-    for tag in RE_HTML_IMG.findall(cell):
-        has_image = True
-        attrs = {
-            name.lower(): (dq or sq or bare)
-            for name, dq, sq, bare in RE_ATTR.findall(tag)
-        }
-        numbers = []
-        for key in ("width", "height"):
-            value = re.sub(r"[^\d.]", "", attrs.get(key, ""))
-            if value:
-                try:
-                    numbers.append(float(value))
-                except ValueError:
-                    pass
-        if numbers:
-            sizes.append(int(max(numbers)))
-
-    return has_image, (max(sizes) if sizes else None)
+    for match in RE_MD_IMAGE.finditer(cell):
+        url = match.group(1).strip().strip("<>")
+        size = thumb_marker_size(url)
+        if size is not None:
+            sizes.append(size)
+    has_image = bool(RE_MD_IMAGE.search(cell)) or has_inline_html
+    return has_image, has_inline_html, sizes
 
 
 def check_preview(table: Table) -> list[Violation]:
-    """【预览】列的图片必须写死小尺寸，否则会把右侧的链接顶出可视区。"""
+    """【预览】列：只能出现「已带缩略图变形标记的 Markdown 图片」，不带图是合法的降级。"""
     violations: list[Violation] = []
     index = find_preview_column(table.header)
     if index is None:
         return violations
 
     template = (
-        '把【预览】列改成 `<img src="图片地址" alt="商品名" width="28" height="28">`，'
-        "28px 约 1.5 行文字高。"
+        "缩略图必须先用 `uv run scripts/thumb.py --url <picUrl>` 校验，"
+        "把返回的 `thumb_url` 写进 `![商品名](thumb_url)`；"
+        "`ok: false` 的行**不放图片，降级为纯文字**，严禁退回原 picUrl。"
     )
+    rows_with_image = 0
+
     for line_no, cells in table.rows:
         if index >= len(cells):
             continue
         cell = cells[index]
-        has_image, max_px = cell_preview_pixels(cell)
+        has_image, has_inline_html, sizes = cell_preview(cell)
 
-        if not has_image:
+        if has_inline_html:
+            # 算作「这一行本来是要放图的」，免得再叠一条「整列无图」的告警混淆视听
+            rows_with_image += 1
             violations.append(
                 Violation(
-                    rule="PREVIEW_NOT_IMAGE",
+                    rule="PREVIEW_INLINE_HTML",
                     severity=SEVERITY_ERROR,
                     message=(
-                        f"【预览】列没有图片（当前内容：{trim(cell) or '空'}）。"
-                        + template
+                        "【预览】列用了行内 HTML `<img>`。WorkBuddy 的渲染器不支持行内 HTML，"
+                        "标签会原样显示或整段被丢掉，白写。" + template
                     ),
                     line=line_no,
                     snippet=row_snippet(cells),
@@ -372,47 +393,70 @@ def check_preview(table: Table) -> list[Violation]:
             )
             continue
 
-        if RE_MD_IMAGE.search(cell):
+        if not has_image:
+            # 该行没有可用缩略图 → 降级为纯文字，这是允许的
+            continue
+
+        rows_with_image += 1
+
+        if not sizes:
             violations.append(
                 Violation(
-                    rule="PREVIEW_MD_IMAGE",
+                    rule="PREVIEW_ORIGINAL_URL",
                     severity=SEVERITY_ERROR,
                     message=(
-                        "【预览】列用了 `![商品名](picUrl)`。Markdown 图片语法无法指定尺寸，"
-                        "会按原图渲染（电商图常为 800×800），把右侧的价格与购买链接顶出可视区。"
-                        + template
+                        "【预览】列的图片 URL 没有任何缩略图变形标记，大概率就是原图"
+                        "（电商图常为 800×800），会把表格撑成一屏高、把右侧的价格与购买"
+                        "链接顶出可视区。" + template
                     ),
                     line=line_no,
                     snippet=row_snippet(cells),
                 )
             )
-        elif max_px is None:
-            violations.append(
-                Violation(
-                    rule="PREVIEW_NO_SIZE",
-                    severity=SEVERITY_ERROR,
-                    message=(
-                        "【预览】列的 `<img>` 没有写 `width` / `height`，会按原图大小渲染，"
-                        "把右侧的购买链接顶出可视区。" + template
-                    ),
-                    line=line_no,
-                    snippet=row_snippet(cells),
-                )
-            )
-        elif max_px > MAX_PREVIEW_PX:
+            continue
+
+        biggest = max(sizes)
+        if biggest > PREVIEW_MAX_PX:
             violations.append(
                 Violation(
                     rule="PREVIEW_TOO_LARGE",
                     severity=SEVERITY_ERROR,
                     message=(
-                        f"【预览】列图片声明尺寸 {max_px}px，超过上限 "
-                        f"{MAX_PREVIEW_PX}px，行高会被撑起来、右侧的链接会被顶出可视区。"
+                        f"【预览】列图片请求的尺寸是 {biggest}px，超过上限 {PREVIEW_MAX_PX}px。"
                         + template
                     ),
                     line=line_no,
                     snippet=row_snippet(cells),
                 )
             )
+        elif biggest != PREVIEW_SIZE:
+            violations.append(
+                Violation(
+                    rule="PREVIEW_SIZE_ODD",
+                    severity=SEVERITY_WARNING,
+                    message=(
+                        f"【预览】列图片请求的尺寸是 {biggest}px，不是标准的 "
+                        f"{PREVIEW_SIZE}px。{PREVIEW_SIZE}px 约一行文字高、所有 CDN 都支持；"
+                        "更大的尺寸要先确认该 CDN 认这个值。"
+                    ),
+                    line=line_no,
+                    snippet=row_snippet(cells),
+                )
+            )
+
+    if table.rows and rows_with_image == 0:
+        violations.append(
+            Violation(
+                rule="PREVIEW_COLUMN_EMPTY",
+                severity=SEVERITY_WARNING,
+                message=(
+                    "【预览】列一行图都没有（全部降级为纯文字）。既然整列都没图，"
+                    "直接删掉这一列，表格更窄、链接更靠前。"
+                ),
+                line=table.start_line,
+                snippet=row_snippet(table.header),
+            )
+        )
     return violations
 
 
@@ -684,9 +728,9 @@ def build_instruction(errors: list[Violation]) -> str:
         "写占位符或直接粘长链接；",
         "3) 严禁把链接、淘口令单独列在表格下方或回答末尾——表格外的链接一律要删掉并"
         "填回对应行；",
-        "4) 【预览】列的缩略图写成 `<img src=\"图片地址\" alt=\"商品名\" width=\"28\" "
-        "height=\"28\">`；严禁用 `![商品名](picUrl)` 或不带 width/height 的 `<img>`，"
-        "那会按原图渲染并把右边的链接顶出屏幕。",
+        "4) 【预览】列只能写**经 `scripts/thumb.py` 校验通过**的缩略图地址："
+        "`![商品名](thumb_url)`；没通过校验的行不放图片、降级为纯文字，"
+        "严禁退回原 picUrl，也严禁用行内 HTML `<img>`（WorkBuddy 不渲染）。",
         "请重新生成完整回答（保留原有价格/规格/专票等数据与数据来源声明），逐条修正：",
     ]
     for index, violation in enumerate(errors, start=1):

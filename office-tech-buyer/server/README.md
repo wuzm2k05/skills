@@ -201,6 +201,8 @@ server/
 │   ├── test_detail.py             # 详情接口与专票、质保解析
 │   ├── test_category_engine.py    # 映射匹配与单价换算的保守性
 │   └── smoke_test.py              # 独立端到端冒烟测试（不依赖 pytest）
+├── document/
+│   └── server-configuration.md     # 配置手册：所有配置项、四种部署方式的落地、排查
 ├── pyproject.toml                 # 依赖、开发组与 pytest 配置
 ├── uv.lock                        # 依赖锁定（提交入库，保证各处一致）
 ├── .python-version                # 固定解释器版本
@@ -257,6 +259,10 @@ unmatched.log  →  unmatched.log.1  →  unmatched.log.2  →  …  →  unmatc
   （上限、备份数、现存分片路径），便于确认滚动是否按预期发生。
 
 ## 5. 配置项（环境变量，均有默认值）
+
+> 完整配置手册（含每个变量的取值取舍、四种部署方式的落地步骤、Nginx/systemd/Docker
+> 样例、排查清单）见 **[document/server-configuration.md](document/server-configuration.md)**。
+> 下面是速查表。
 
 | 变量 | 默认值 | 说明 |
 | :--- | :--- | :--- |

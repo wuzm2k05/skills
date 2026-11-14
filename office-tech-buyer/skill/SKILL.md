@@ -5,7 +5,7 @@ display_name_en: "Office Tech Buyer"
 description: "专为企业行政、IT运维与办公采购打造的全品类智能化比价工具。支持电脑整机、服务器、打印机、人体工学椅全网底价查询，独家支持【原装 vs 兼容耗材】精准匹配与复印纸/纸品单价换算。"
 description_zh: "【办公采买不踩坑】支持电脑/服务器/打印机/复印纸/办公椅全网比价，智能匹配耗材型号并区分原装与第三方兼容"
 description_en: "Cross-platform price comparison for office hardware and consumables, with OEM-vs-compatible matching and paper unit-price conversion"
-version: 1.1.0
+version: 1.3.0
 author: 玖结点信息技术有限公司
 icon: "_icon.png"
 homepage: https://github.com/wuzm2k05/skills/office-tech-buyer
@@ -158,7 +158,14 @@ export OFFICE_BUYER_SERVER_URL='http://localhost:11443'
 - **先看 `matched` 字段**：为 `false` 时执行「宿主 AI 智能匹配兜底」——用「设备型号 + 耗材类别词」二次调用 `search`（见 `references/answer-rules.md` 第 1 节），再合并展示。不要凭设备型号推测耗材型号。
 - **数据强绑定**：1 行表格 = 1 条原始记录，严禁跨记录拼凑价格、规格与链接。
 - **必须将购买链接放在表格中**：链接的写法只占两个汉字宽度，不会撑坏表格——“表格太宽/链接太长”不构成省略该列的理由。严禁将链接放在表格外或回答末尾。
-- **展示商品图片**：在表格第一列增加【预览】列，使用 `![商品名](picUrl)` 展示商品缩略图。
+- **【购买链接】紧随【预览】列，不得放在最后一列**：列序固定为
+  `预览 | 购买链接 | 平台 | 店铺类型 | 价格 | 专票/质保 | 核心特征/备注`。
+  表格一宽，最后一列最先被截在可视区外，用户就点不到链接了；把最长的备注列放最后。
+- **缩略图必须写死小尺寸**：【预览】列用行内 HTML
+  `<img src="{picUrl}" alt="{商品名}" width="28" height="28">`，28px 约 1.5 行文字高，
+  即「比一行文字稍大」。**严禁 `![商品名](picUrl)`**——Markdown 图片语法不能指定尺寸，
+  一定渲染成原图大小（常为 800×800），把右边所有列顶出可视区。
+  若宿主渲染器不支持行内 HTML，就直接去掉【预览】列，不要退回 `![]()`。
 - **规格澄清逻辑**：如果响应中包含 `clarify_questions`，必须先以友好方式向用户询问这些问题，然后再根据用户选择进行二次比价。
 - **区分供应类型**：原装与第三方兼容耗材必须分栏或分行展示，不得混价比较。
 - **纸品按单价横比**：复印纸/文具类必须折算到「¥/包」「¥/卷」「¥/支」再比较总价。

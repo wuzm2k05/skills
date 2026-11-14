@@ -12,6 +12,15 @@
 2. 有该列但单元格为空 / 占位符（`-`、`url` 之类），或直接粘了裸长链接；
 3. 链接写在表格下方、回答末尾、或另起一段的「购买链接：」清单里。
 
+另外还检查两项会「让链接看不见」「把表格撑坏」的排版问题（见 answer-rules 第 2.0 节）：
+
+4. 【购买链接】被放在**最后一列**——表格一宽，最后一列最先被截在可视区外；
+5. 【预览】列用了 `![商品名](picUrl)`、没写死尺寸的 `<img>`、或尺寸过大——Markdown
+   图片语法无法指定尺寸，会被渲染成原图大小，把右侧的价格与链接全部顶出屏幕。
+
+这两项与前三项一样是 error（退出码 1）。`warnings` 只留给「链接写了『未获取』」这类
+需要人工确认、但格式本身合法的情况。
+
 用法::
 
     uv run scripts/check_answer.py --file answer.md     # 从文件读（推荐）
@@ -43,6 +52,10 @@ SEVERITY_WARNING = "warning"
 #: 链接列里「确实拿不到链接」的合法写法（answer-rules 第 5 节：没有拿到链接的写"未获取"）
 MISSING_ACK_MARKERS = ("未获取", "未提供", "暂无链接", "未取到")
 
+#: 【预览】列缩略图的尺寸上限（px）。规则要求 28px「比一行文字稍大」，
+#: 这里放宽到 48px，仍然远小于原图（电商图常为 800×800）。
+MAX_PREVIEW_PX = 48
+
 #: 链接列里属于「根本没写」的占位写法。归一化后精确匹配，一律算 error。
 PLACEHOLDER_CELLS = {
     "", "-", "--", "---", "—", "――", "——", "/", "\\", "·", ".", "…",
@@ -66,6 +79,14 @@ RE_BARE_URL = re.compile(r"https?://[^\s<>()\[\]\"'“”‘’，。；;、）�
 #: 淘宝/天猫淘口令，如 ``￥AbC123xyz￥``
 RE_TAOCODE = re.compile(r"￥[0-9A-Za-z]{6,}￥")
 RE_HTTP = re.compile(r"^https?://", re.I)
+#: 行内 HTML 图片标签
+RE_HTML_IMG = re.compile(r"<img\b[^>]*>", re.I)
+#: HTML 属性，值可带单引号、双引号或不带引号
+RE_ATTR = re.compile(
+    r"""([a-zA-Z-]+)\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s"'>]+))"""
+)
+#: Markdown 图片语法 ``![alt](url)``——无法指定尺寸，规则 2.0 里明令禁止
+RE_MD_IMAGE = re.compile(r"!\[[^\]\n]*\]\(\s*[^()\s]*(?:\([^()]*\)[^()\s]*)*\s*\)")
 
 
 # --------------------------------------------------------------------------- #
@@ -278,6 +299,145 @@ def find_link_column(header: list[str]) -> int | None:
     return None
 
 
+def find_preview_column(header: list[str]) -> int | None:
+    for index, cell in enumerate(header):
+        text = strip_markup(cell)
+        if "预览" in text or "图片" in text or "缩略图" in text:
+            return index
+    return None
+
+
+def cell_preview_pixels(cell: str) -> tuple[bool, int | None]:
+    """判断【预览】单元格的图片写法。
+
+    返回 ``(has_image, declared_max_px)``：``declared_max_px`` 为该单元格里所有
+    图片声明尺寸的最大值，``None`` 表示没有任何一张写了尺寸。
+    """
+    has_image = False
+    sizes: list[int] = []
+
+    if RE_MD_IMAGE.search(cell):
+        # Markdown 图片语法不能指定尺寸，一定按原图渲染
+        has_image = True
+
+    for tag in RE_HTML_IMG.findall(cell):
+        has_image = True
+        attrs = {
+            name.lower(): (dq or sq or bare)
+            for name, dq, sq, bare in RE_ATTR.findall(tag)
+        }
+        numbers = []
+        for key in ("width", "height"):
+            value = re.sub(r"[^\d.]", "", attrs.get(key, ""))
+            if value:
+                try:
+                    numbers.append(float(value))
+                except ValueError:
+                    pass
+        if numbers:
+            sizes.append(int(max(numbers)))
+
+    return has_image, (max(sizes) if sizes else None)
+
+
+def check_preview(table: Table) -> list[Violation]:
+    """【预览】列的图片必须写死小尺寸，否则会把右侧的链接顶出可视区。"""
+    violations: list[Violation] = []
+    index = find_preview_column(table.header)
+    if index is None:
+        return violations
+
+    template = (
+        '把【预览】列改成 `<img src="图片地址" alt="商品名" width="28" height="28">`，'
+        "28px 约 1.5 行文字高。"
+    )
+    for line_no, cells in table.rows:
+        if index >= len(cells):
+            continue
+        cell = cells[index]
+        has_image, max_px = cell_preview_pixels(cell)
+
+        if not has_image:
+            violations.append(
+                Violation(
+                    rule="PREVIEW_NOT_IMAGE",
+                    severity=SEVERITY_ERROR,
+                    message=(
+                        f"【预览】列没有图片（当前内容：{trim(cell) or '空'}）。"
+                        + template
+                    ),
+                    line=line_no,
+                    snippet=row_snippet(cells),
+                )
+            )
+            continue
+
+        if RE_MD_IMAGE.search(cell):
+            violations.append(
+                Violation(
+                    rule="PREVIEW_MD_IMAGE",
+                    severity=SEVERITY_ERROR,
+                    message=(
+                        "【预览】列用了 `![商品名](picUrl)`。Markdown 图片语法无法指定尺寸，"
+                        "会按原图渲染（电商图常为 800×800），把右侧的价格与购买链接顶出可视区。"
+                        + template
+                    ),
+                    line=line_no,
+                    snippet=row_snippet(cells),
+                )
+            )
+        elif max_px is None:
+            violations.append(
+                Violation(
+                    rule="PREVIEW_NO_SIZE",
+                    severity=SEVERITY_ERROR,
+                    message=(
+                        "【预览】列的 `<img>` 没有写 `width` / `height`，会按原图大小渲染，"
+                        "把右侧的购买链接顶出可视区。" + template
+                    ),
+                    line=line_no,
+                    snippet=row_snippet(cells),
+                )
+            )
+        elif max_px > MAX_PREVIEW_PX:
+            violations.append(
+                Violation(
+                    rule="PREVIEW_TOO_LARGE",
+                    severity=SEVERITY_ERROR,
+                    message=(
+                        f"【预览】列图片声明尺寸 {max_px}px，超过上限 "
+                        f"{MAX_PREVIEW_PX}px，行高会被撑起来、右侧的链接会被顶出可视区。"
+                        + template
+                    ),
+                    line=line_no,
+                    snippet=row_snippet(cells),
+                )
+            )
+    return violations
+
+
+def check_link_column_order(table: Table) -> list[Violation]:
+    """【购买链接】排在最后一列时，表格一宽最先被截掉的就是它。"""
+    if table.link_column is None:
+        return []
+    if table.link_column != len(table.header) - 1:
+        return []
+    return [
+        Violation(
+            rule="LINK_COLUMN_LAST",
+            severity=SEVERITY_ERROR,
+            message=(
+                "【购买链接】被放在表格最后一列。表格比窗口宽时，最后一列会最先被截在"
+                "可视区外，用户点不到链接。规则 2.0 要求列序为"
+                "`预览 | 购买链接 | 平台 | 店铺类型 | 价格 | 专票/质保 | 核心特征/备注`，"
+                "把最长的备注列留到最后。"
+            ),
+            line=table.start_line,
+            snippet=row_snippet(table.header),
+        )
+    ]
+
+
 # --------------------------------------------------------------------------- #
 # 检查项
 # --------------------------------------------------------------------------- #
@@ -457,6 +617,8 @@ def analyze(text: str, strict: bool) -> dict:
                 )
             )
             continue
+        violations.extend(check_link_column_order(table))
+        violations.extend(check_preview(table))
         violations.extend(check_link_column(table))
 
     violations.extend(check_outside_links(lines, table_lines))
@@ -513,12 +675,18 @@ def analyze(text: str, strict: bool) -> dict:
 def build_instruction(errors: list[Violation]) -> str:
     """给宿主 AI 的重写指令：逐条列出必须改的点，并明确重写要求。"""
     lines = [
-        f"回答未通过交付前自检，共 {len(errors)} 项必须修正。购买链接必须写在表格里：",
-        "1) 表格保留【购买链接】列，不得删除；",
+        f"回答未通过交付前自检，共 {len(errors)} 项必须修正。购买链接必须写在表格里，"
+        "而且必须让用户看得见：",
+        "1) 表格保留【购买链接】列，不得删除；列序固定为"
+        "`预览 | 购买链接 | 平台 | 店铺类型 | 价格 | 专票/质保 | 核心特征/备注`，"
+        "链接列紧跟预览列，最长的备注列留到最后；",
         "2) 每个商品那一行的链接单元格填 `[查看详情](https://真实链接)`，不得留空、"
         "写占位符或直接粘长链接；",
         "3) 严禁把链接、淘口令单独列在表格下方或回答末尾——表格外的链接一律要删掉并"
-        "填回对应行。",
+        "填回对应行；",
+        "4) 【预览】列的缩略图写成 `<img src=\"图片地址\" alt=\"商品名\" width=\"28\" "
+        "height=\"28\">`；严禁用 `![商品名](picUrl)` 或不带 width/height 的 `<img>`，"
+        "那会按原图渲染并把右边的链接顶出屏幕。",
         "请重新生成完整回答（保留原有价格/规格/专票等数据与数据来源声明），逐条修正：",
     ]
     for index, violation in enumerate(errors, start=1):
